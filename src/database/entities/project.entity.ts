@@ -52,6 +52,15 @@ export class Project {
   })
   status: ProjectStatus;
 
+  @Column({ name: 'client_name', length: 200, nullable: true })
+  clientName: string;
+
+  @Column({ name: 'start_date', type: 'date', nullable: true })
+  startDate: string;
+
+  @Column({ name: 'end_date', type: 'date', nullable: true })
+  endDate: string;
+
   @Column({ type: 'text', nullable: true })
   description: string;
 

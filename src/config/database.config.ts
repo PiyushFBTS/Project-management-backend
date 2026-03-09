@@ -15,6 +15,7 @@ import { SmtpConfig } from '../database/entities/smtp-config.entity';
 import { ProjectPhase } from '../database/entities/project-phase.entity';
 import { ProjectTask } from '../database/entities/project-task.entity';
 import { ProjectTaskComment } from '../database/entities/project-task-comment.entity';
+import { ProjectTaskHistory } from '../database/entities/project-task-history.entity';
 
 export const databaseConfig = (
   configService: ConfigService,
@@ -25,7 +26,7 @@ export const databaseConfig = (
   username: configService.get<string>('DB_USERNAME', 'root'),
   password: configService.get<string>('DB_PASSWORD', ''),
   database: configService.get<string>('DB_DATABASE', 'it_project_management'),
-  entities: [Company, AdminUser, Project, TaskType, Employee, DailyTaskSheet, TaskEntry, Notification, LeaveReason, LeaveRequest, LeaveRequestWatcher, SmtpConfig, ProjectPhase, ProjectTask, ProjectTaskComment],
+  entities: [Company, AdminUser, Project, TaskType, Employee, DailyTaskSheet, TaskEntry, Notification, LeaveReason, LeaveRequest, LeaveRequestWatcher, SmtpConfig, ProjectPhase, ProjectTask, ProjectTaskComment, ProjectTaskHistory],
   // NEVER set synchronize: true in production — use migrations instead
   synchronize: configService.get<string>('DB_SYNCHRONIZE') === 'true',
   logging: configService.get<string>('DB_LOGGING') === 'true',

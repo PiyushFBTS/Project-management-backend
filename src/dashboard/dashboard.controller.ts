@@ -18,6 +18,12 @@ export class DashboardController {
     return this.dashboardService.getSummary(companyId, month);
   }
 
+  @Get('task-summary')
+  @ApiOperation({ summary: 'Task/ticket counts by status and priority' })
+  getTaskSummary(@TenantId() companyId: number) {
+    return this.dashboardService.getTaskSummary(companyId);
+  }
+
   @Get('man-days-by-type')
   @ApiOperation({ summary: 'Man-days grouped by consultant type (pie/bar chart)' })
   @ApiQuery({ name: 'month', required: false, example: '2026-02' })

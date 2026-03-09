@@ -25,10 +25,26 @@ export class CreateProjectDto {
   @IsEnum(ProjectType)
   projectType: ProjectType;
 
+  @ApiPropertyOptional()
+  @IsString()
+  @IsOptional()
+  @MaxLength(200)
+  clientName?: string;
+
   @ApiPropertyOptional({ enum: ProjectStatus, default: ProjectStatus.ACTIVE })
   @IsEnum(ProjectStatus)
   @IsOptional()
   status?: ProjectStatus;
+
+  @ApiPropertyOptional({ example: '2026-03-01' })
+  @IsString()
+  @IsOptional()
+  startDate?: string;
+
+  @ApiPropertyOptional({ example: '2026-12-31' })
+  @IsString()
+  @IsOptional()
+  endDate?: string;
 
   @ApiPropertyOptional()
   @IsString()

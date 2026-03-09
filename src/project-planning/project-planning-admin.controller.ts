@@ -112,9 +112,10 @@ export class ProjectPlanningAdminController {
   createTask(
     @Param('projectId', ParseIntPipe) projectId: number,
     @TenantId() companyId: number,
+    @CurrentUser('id') adminId: number,
     @Body() dto: CreateTaskDto,
   ) {
-    return this.service.createTask(projectId, companyId, dto);
+    return this.service.createTask(projectId, companyId, dto, adminId);
   }
 
   @Get('tasks/:taskId')
@@ -131,9 +132,10 @@ export class ProjectPlanningAdminController {
   updateTask(
     @Param('taskId', ParseIntPipe) taskId: number,
     @TenantId() companyId: number,
+    @CurrentUser('id') adminId: number,
     @Body() dto: UpdateTaskDto,
   ) {
-    return this.service.updateTask(taskId, companyId, dto);
+    return this.service.updateTask(taskId, companyId, dto, adminId);
   }
 
   @Delete('tasks/:taskId')
@@ -144,6 +146,17 @@ export class ProjectPlanningAdminController {
     @TenantId() companyId: number,
   ) {
     return this.service.deleteTask(taskId, companyId);
+  }
+
+  // ── History ──────────────────────────────────────────────────────────────────
+
+  @Get('tasks/:taskId/history')
+  @ApiOperation({ summary: 'Get task history / audit log' })
+  getTaskHistory(
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @TenantId() companyId: number,
+  ) {
+    return this.service.getTaskHistory(taskId, companyId);
   }
 
   // ── Comments ─────────────────────────────────────────────────────────────────

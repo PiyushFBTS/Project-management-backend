@@ -13,6 +13,7 @@ import { Company } from './company.entity';
 import { Project } from './project.entity';
 import { ProjectPhase } from './project-phase.entity';
 import { Employee } from './employee.entity';
+import { AdminUser } from './admin-user.entity';
 import { ProjectTaskComment } from './project-task-comment.entity';
 
 export enum TaskPriority {
@@ -27,6 +28,7 @@ export enum ProjectTaskStatus {
   IN_PROGRESS = 'in_progress',
   IN_REVIEW = 'in_review',
   DONE = 'done',
+  CLOSED = 'closed',
 }
 
 @Entity('project_tasks')
@@ -67,6 +69,13 @@ export class ProjectTask {
   @ManyToOne(() => Employee, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'assignee_id' })
   assignee: Employee | null;
+
+  @Column({ name: 'assigned_admin_id', nullable: true })
+  assignedAdminId: number | null;
+
+  @ManyToOne(() => AdminUser, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'assigned_admin_id' })
+  assignedAdmin: AdminUser | null;
 
   @Column({
     type: 'enum',

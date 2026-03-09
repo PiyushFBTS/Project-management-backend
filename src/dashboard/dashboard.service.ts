@@ -45,6 +45,35 @@ export class DashboardService {
     };
   }
 
+  async getTaskSummary(companyId: number) {
+    const [byStatus, byPriority] = await Promise.all([
+      this.dataSource.query(
+        `SELECT status, COUNT(*) AS count FROM project_tasks WHERE company_id = ? GROUP BY status`,
+        [companyId],
+      ),
+      this.dataSource.query(
+        `SELECT priority, COUNT(*) AS count FROM project_tasks WHERE company_id = ? GROUP BY priority`,
+        [companyId],
+      ),
+    ]);
+
+    const totalTasks = byStatus.reduce((sum: number, r: any) => sum + Number(r.count), 0);
+    const todoCount = Number(byStatus.find((r: any) => r.status === 'todo')?.count ?? 0);
+    const inProgressCount = Number(byStatus.find((r: any) => r.status === 'in_progress')?.count ?? 0);
+    const inReviewCount = Number(byStatus.find((r: any) => r.status === 'in_review')?.count ?? 0);
+    const doneCount = Number(byStatus.find((r: any) => r.status === 'done')?.count ?? 0);
+
+    return {
+      totalTasks,
+      todoCount,
+      inProgressCount,
+      inReviewCount,
+      doneCount,
+      byStatus,
+      byPriority,
+    };
+  }
+
   async getManDaysByType(companyId: number, month?: string) {
     const m = month || new Date().toISOString().slice(0, 7);
     return this.dataSource.query(

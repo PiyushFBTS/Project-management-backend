@@ -20,48 +20,30 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 import { FilterTasksDto } from './dto/filter-tasks.dto';
 import { AuthorType } from '../database/entities/project-task-comment.entity';
 
-@ApiTags('Employee — My Tasks')
+@ApiTags('Employee — All Project Tickets')
 @ApiBearerAuth('employee-jwt')
 @UseGuards(JwtEmployeeGuard)
-@Controller('employee/my-tasks')
-export class ProjectPlanningEmployeeController {
+@Controller('employee/project-tickets')
+export class ProjectPlanningTicketsController {
   constructor(private readonly service: ProjectPlanningService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all tasks assigned to me' })
-  getMyTasks(
+  @ApiOperation({ summary: 'List all tickets from projects I belong to' })
+  getProjectTickets(
     @CurrentUser('id') employeeId: number,
     @TenantId() companyId: number,
     @Query() filter: FilterTasksDto,
   ) {
-    return this.service.getMyTasks(employeeId, companyId, filter);
+    return this.service.getProjectTickets(employeeId, companyId, filter);
   }
 
-  @Get('summary')
-  @ApiOperation({ summary: 'Task stats summary for the logged-in employee' })
-  getMyTasksSummary(
+  @Get('projects')
+  @ApiOperation({ summary: 'List projects accessible to this employee' })
+  getAccessibleProjects(
     @CurrentUser('id') employeeId: number,
     @TenantId() companyId: number,
   ) {
-    return this.service.getMyTasksSummary(employeeId, companyId);
-  }
-
-  @Get('autocomplete')
-  @ApiOperation({ summary: 'Autocomplete tickets by partial ticket number or title' })
-  autocomplete(
-    @Query('q') query: string,
-    @TenantId() companyId: number,
-  ) {
-    return this.service.autocompleteTickets(query?.trim() ?? '', companyId);
-  }
-
-  @Get('search')
-  @ApiOperation({ summary: 'Search any company task by ticket number' })
-  searchByTicket(
-    @Query('ticket') ticket: string,
-    @TenantId() companyId: number,
-  ) {
-    return this.service.searchByTicket(ticket.toUpperCase(), companyId);
+    return this.service.getAccessibleProjects(employeeId, companyId);
   }
 
   @Get('admins')
@@ -89,29 +71,29 @@ export class ProjectPlanningEmployeeController {
   }
 
   @Patch(':taskId/status')
-  @ApiOperation({ summary: 'Update my task status' })
+  @ApiOperation({ summary: 'Update any project task status' })
   updateStatus(
     @Param('taskId', ParseIntPipe) taskId: number,
     @CurrentUser('id') employeeId: number,
     @TenantId() companyId: number,
     @Body() dto: UpdateTaskStatusDto,
   ) {
-    return this.service.updateMyTaskStatus(taskId, employeeId, companyId, dto);
+    return this.service.updateProjectTaskStatus(taskId, employeeId, companyId, dto);
   }
 
   @Patch(':taskId/reassign')
-  @ApiOperation({ summary: 'Reassign a task to another employee in the company' })
+  @ApiOperation({ summary: 'Reassign any project task to another employee' })
   reassignTask(
     @Param('taskId', ParseIntPipe) taskId: number,
     @CurrentUser('id') employeeId: number,
     @TenantId() companyId: number,
     @Body() dto: ReassignTaskDto,
   ) {
-    return this.service.reassignTask(taskId, employeeId, companyId, dto.assigneeId);
+    return this.service.reassignProjectTask(taskId, employeeId, companyId, dto.assigneeId);
   }
 
   @Post(':taskId/comments')
-  @ApiOperation({ summary: 'Add comment to a task (assigned or searched)' })
+  @ApiOperation({ summary: 'Add comment to any project task' })
   addComment(
     @Param('taskId', ParseIntPipe) taskId: number,
     @TenantId() companyId: number,
