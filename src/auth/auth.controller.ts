@@ -58,7 +58,7 @@ export class AuthController {
   @ApiOperation({ summary: 'Get current admin profile' })
   getAdminProfile(@CurrentUser() user: any) {
     const { passwordHash, ...profile } = user;
-    return profile;
+    return this.authService.enrichAdminProfile(profile);
   }
 
   @Patch('change-password')

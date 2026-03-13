@@ -8,7 +8,7 @@ import { Employee } from '../database/entities/employee.entity';
 import { DailyTaskSheet } from '../database/entities/daily-task-sheet.entity';
 import { TaskEntry } from '../database/entities/task-entry.entity';
 import { Notification } from '../database/entities/notification.entity';
-import { LeaveReason } from '../database/entities/leave-reason.entity';
+import { LeaveType } from '../database/entities/leave-reason.entity';
 import { LeaveRequest } from '../database/entities/leave-request.entity';
 import { LeaveRequestWatcher } from '../database/entities/leave-request-watcher.entity';
 import { SmtpConfig } from '../database/entities/smtp-config.entity';
@@ -16,6 +16,11 @@ import { ProjectPhase } from '../database/entities/project-phase.entity';
 import { ProjectTask } from '../database/entities/project-task.entity';
 import { ProjectTaskComment } from '../database/entities/project-task-comment.entity';
 import { ProjectTaskHistory } from '../database/entities/project-task-history.entity';
+import { Country } from '../database/entities/country.entity';
+import { State } from '../database/entities/state.entity';
+import { City } from '../database/entities/city.entity';
+import { Currency } from '../database/entities/currency.entity';
+import { PostalCode } from '../database/entities/postal-code.entity';
 
 export const databaseConfig = (
   configService: ConfigService,
@@ -26,7 +31,7 @@ export const databaseConfig = (
   username: configService.get<string>('DB_USERNAME', 'root'),
   password: configService.get<string>('DB_PASSWORD', ''),
   database: configService.get<string>('DB_DATABASE', 'it_project_management'),
-  entities: [Company, AdminUser, Project, TaskType, Employee, DailyTaskSheet, TaskEntry, Notification, LeaveReason, LeaveRequest, LeaveRequestWatcher, SmtpConfig, ProjectPhase, ProjectTask, ProjectTaskComment, ProjectTaskHistory],
+  entities: [Company, AdminUser, Project, TaskType, Employee, DailyTaskSheet, TaskEntry, Notification, LeaveType, LeaveRequest, LeaveRequestWatcher, SmtpConfig, ProjectPhase, ProjectTask, ProjectTaskComment, ProjectTaskHistory, Country, State, City, Currency, PostalCode],
   // NEVER set synchronize: true in production — use migrations instead
   synchronize: configService.get<string>('DB_SYNCHRONIZE') === 'true',
   logging: configService.get<string>('DB_LOGGING') === 'true',

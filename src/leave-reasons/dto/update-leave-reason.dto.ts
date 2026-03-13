@@ -1,4 +1,4 @@
 import { PartialType } from '@nestjs/swagger';
-import { CreateLeaveReasonDto } from './create-leave-reason.dto';
+import { CreateLeaveTypeDto } from './create-leave-reason.dto';
 
-export class UpdateLeaveReasonDto extends PartialType(CreateLeaveReasonDto) {}
+export class UpdateLeaveTypeDto extends PartialType(CreateLeaveTypeDto) {}

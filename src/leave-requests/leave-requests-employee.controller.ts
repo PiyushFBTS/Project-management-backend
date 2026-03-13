@@ -18,10 +18,10 @@ import { FilterLeaveRequestDto } from './dto/filter-leave-request.dto';
 export class LeaveRequestsEmployeeController {
   constructor(private readonly service: LeaveRequestsService) {}
 
-  @Get('reasons')
-  @ApiOperation({ summary: 'Active leave reasons for dropdown' })
-  getReasons(@TenantId() companyId: number) {
-    return this.service.getActiveReasons(companyId);
+  @Get('leave-types')
+  @ApiOperation({ summary: 'Active leave types for dropdown' })
+  getLeaveTypes(@TenantId() companyId: number) {
+    return this.service.getActiveLeaveTypes(companyId);
   }
 
   @Get('colleagues')

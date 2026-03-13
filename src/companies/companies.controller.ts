@@ -10,9 +10,14 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
 import { CompaniesService } from './companies.service';
 import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
@@ -60,6 +65,38 @@ export class CompaniesController {
   @ApiOperation({ summary: 'Deactivate a company' })
   deactivate(@Param('id', ParseIntPipe) id: number) {
     return this.companiesService.deactivate(id);
+  }
+
+  // ── Logo upload ─────────────────────────────────────────────────────────
+
+  @Post('companies/:id/logo')
+  @ApiOperation({ summary: 'Upload company logo' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('logo', {
+      storage: diskStorage({
+        destination: './uploads/logos',
+        filename: (_req, file, cb) => {
+          const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+          cb(null, `logo-${uniqueSuffix}${extname(file.originalname)}`);
+        },
+      }),
+      limits: { fileSize: 2 * 1024 * 1024 }, // 2 MB
+      fileFilter: (_req, file, cb) => {
+        if (/\.(jpg|jpeg|png|gif|svg|webp)$/i.test(file.originalname)) {
+          cb(null, true);
+        } else {
+          cb(new Error('Only image files are allowed'), false);
+        }
+      },
+    }),
+  )
+  uploadLogo(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    const logoUrl = `/uploads/logos/${file.filename}`;
+    return this.companiesService.updateLogo(id, logoUrl);
   }
 
   // ── Company admin management ──────────────────────────────────────────────

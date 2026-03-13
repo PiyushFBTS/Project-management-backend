@@ -1,7 +1,7 @@
 import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
-export class CreateLeaveReasonDto {
+export class CreateLeaveTypeDto {
   @ApiProperty({ example: 'SL' })
   @IsString()
   @IsNotEmpty()

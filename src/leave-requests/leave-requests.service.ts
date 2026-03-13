@@ -5,7 +5,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { LeaveRequest, LeaveRequestStatus } from '../database/entities/leave-request.entity';
 import { LeaveRequestWatcher } from '../database/entities/leave-request-watcher.entity';
-import { LeaveReason } from '../database/entities/leave-reason.entity';
+import { LeaveType } from '../database/entities/leave-reason.entity';
 import { Employee } from '../database/entities/employee.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../database/entities/notification.entity';
@@ -22,8 +22,8 @@ export class LeaveRequestsService {
     private readonly leaveRequestRepo: Repository<LeaveRequest>,
     @InjectRepository(LeaveRequestWatcher)
     private readonly watcherRepo: Repository<LeaveRequestWatcher>,
-    @InjectRepository(LeaveReason)
-    private readonly leaveReasonRepo: Repository<LeaveReason>,
+    @InjectRepository(LeaveType)
+    private readonly leaveTypeRepo: Repository<LeaveType>,
     @InjectRepository(Employee)
     private readonly employeeRepo: Repository<Employee>,
     private readonly notificationsService: NotificationsService,
@@ -37,11 +37,11 @@ export class LeaveRequestsService {
       throw new BadRequestException('You do not have a reporting manager configured. Please contact admin.');
     }
 
-    // Validate leave reason exists and is active
-    const reason = await this.leaveReasonRepo.findOne({
+    // Validate leave type exists and is active
+    const leaveType = await this.leaveTypeRepo.findOne({
       where: { id: dto.leaveReasonId, companyId: employee.companyId, isActive: true },
     });
-    if (!reason) throw new NotFoundException('Leave reason not found or inactive');
+    if (!leaveType) throw new NotFoundException('Leave type not found or inactive');
 
     // Validate dates
     if (dto.dateTo < dto.dateFrom) {
@@ -407,10 +407,10 @@ export class LeaveRequestsService {
     return qb.getRawMany();
   }
 
-  // ── Employee: get active leave reasons (for dropdown) ───────────────────────
+  // ── Employee: get active leave types (for dropdown) ─────────────────────────
 
-  async getActiveReasons(companyId: number) {
-    return this.leaveReasonRepo.find({
+  async getActiveLeaveTypes(companyId: number) {
+    return this.leaveTypeRepo.find({
       where: { companyId, isActive: true },
       select: ['id', 'reasonCode', 'reasonName'],
       order: { reasonName: 'ASC' },

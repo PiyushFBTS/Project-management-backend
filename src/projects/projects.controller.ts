@@ -77,8 +77,17 @@ export class EmployeeProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List active projects (for task sheet dropdowns)' })
-  findAll(@TenantId() companyId: number) {
+  @ApiOperation({ summary: 'List projects where employee has assigned tickets' })
+  findAll(
+    @TenantId() companyId: number,
+    @CurrentUser('id') employeeId: number,
+  ) {
+    return this.projectsService.findByEmployeeTickets(companyId, employeeId);
+  }
+
+  @Get('all-active')
+  @ApiOperation({ summary: 'List all active projects (for task sheet dropdowns)' })
+  findAllActive(@TenantId() companyId: number) {
     return this.projectsService.findAll(companyId, { status: 'active', limit: 200 } as any);
   }
 }

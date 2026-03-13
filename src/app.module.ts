@@ -2,7 +2,9 @@ import { Module } from '@nestjs/common';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ServeStaticModule } from '@nestjs/serve-static';
 import { APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
+import { join } from 'path';
 import { databaseConfig } from './config/database.config';
 import { TenantContextInterceptor } from './common/interceptors/tenant-context.interceptor';
 import { LicenseGuard } from './common/guards/license.guard';
@@ -17,14 +19,21 @@ import { ReportsModule } from './reports/reports.module';
 import { EmployeeModule } from './employee/employee.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { CompaniesModule } from './companies/companies.module';
-import { LeaveReasonsModule } from './leave-reasons/leave-reasons.module';
+import { LeaveTypesModule } from './leave-reasons/leave-reasons.module';
 import { LeaveRequestsModule } from './leave-requests/leave-requests.module';
 import { SmtpModule } from './smtp/smtp.module';
 import { ProjectPlanningModule } from './project-planning/project-planning.module';
+import { LocationModule } from './location/location.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
+
+    ServeStaticModule.forRoot({
+      rootPath: join(__dirname, '..', 'uploads'),
+      serveRoot: '/uploads',
+      serveStaticOptions: { index: false },
+    }),
 
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
@@ -58,10 +67,11 @@ import { ProjectPlanningModule } from './project-planning/project-planning.modul
     ReportsModule,
     EmployeeModule,
     NotificationsModule,
-    LeaveReasonsModule,
+    LeaveTypesModule,
     LeaveRequestsModule,
     SmtpModule,
     ProjectPlanningModule,
+    LocationModule,
   ],
   providers: [
     // Sets request.tenantId from the authenticated user's companyId

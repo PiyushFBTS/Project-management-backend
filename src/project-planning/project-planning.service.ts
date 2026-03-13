@@ -584,10 +584,10 @@ export class ProjectPlanningService {
 
   async reassignTask(taskId: number, employeeId: number, companyId: number, newAssigneeId: number) {
     const task = await this.taskRepo.findOne({
-      where: { id: taskId, companyId, assigneeId: employeeId },
+      where: { id: taskId, companyId },
       relations: ['project', 'assignee'],
     });
-    if (!task) throw new ForbiddenException('Task not found or not assigned to you');
+    if (!task) throw new NotFoundException('Task not found');
 
     const newAssignee = await this.employeeRepo.findOne({
       where: { id: newAssigneeId, companyId, isActive: true },
@@ -718,6 +718,7 @@ export class ProjectPlanningService {
       if (admin) assignerName = admin.name;
     }
 
+    const prevAssigneeId = task.assigneeId;
     const prevAssigneeName = task.assignee?.empName ?? 'Unassigned';
     task.assigneeId = newAssigneeId;
     task.assignee = null;
@@ -731,14 +732,17 @@ export class ProjectPlanningService {
       `Reassigned from ${prevAssigneeName} to ${newAssignee.empName}`,
     );
 
-    await this.notificationsService.create(
-      NotificationType.TASK_ASSIGNED,
-      'Task Reassigned',
-      `${assignerName} assigned you task ${saved.ticketNumber}`,
-      companyId,
-      { taskId: saved.id, projectId: saved.projectId },
-      newAssigneeId,
-    );
+    // Skip notification if reassigning to the same person (self-assign / no change)
+    if (newAssigneeId !== prevAssigneeId) {
+      await this.notificationsService.create(
+        NotificationType.TASK_ASSIGNED,
+        'Task Reassigned',
+        `${assignerName} assigned you task ${saved.ticketNumber}`,
+        companyId,
+        { taskId: saved.id, projectId: saved.projectId },
+        newAssigneeId,
+      );
+    }
 
     return saved;
   }

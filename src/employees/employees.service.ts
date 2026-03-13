@@ -6,6 +6,7 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { Employee, ConsultantType } from '../database/entities/employee.entity';
 import { Company } from '../database/entities/company.entity';
+import { AdminUser } from '../database/entities/admin-user.entity';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { FilterEmployeeDto } from './dto/filter-employee.dto';
@@ -22,6 +23,8 @@ export class EmployeesService {
     private readonly employeeRepo: Repository<Employee>,
     @InjectRepository(Company)
     private readonly companyRepo: Repository<Company>,
+    @InjectRepository(AdminUser)
+    private readonly adminRepo: Repository<AdminUser>,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -45,7 +48,30 @@ export class EmployeesService {
     if (isActive !== undefined) qb.andWhere('e.isActive = :isActive', { isActive });
 
     const [data, total] = await qb.getManyAndCount();
-    return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+
+    // Include company admins on the first page (so they appear in lists)
+    let admins: any[] = [];
+    if (page === 1) {
+      const adminWhere: any = { companyId, isActive: true };
+      const adminResults = await this.adminRepo.find({
+        where: adminWhere,
+        select: ['id', 'name', 'email', 'role', 'isActive', 'companyId', 'createdAt'],
+      });
+      admins = adminResults.map((a) => ({
+        id: a.id,
+        empCode: a.role === 'super_admin' ? 'SUPER-ADMIN' : 'ADMIN',
+        empName: a.name,
+        email: a.email,
+        isActive: a.isActive,
+        consultantType: 'admin',
+        _type: 'admin',
+        createdAt: a.createdAt,
+        assignedProject: null,
+        reportsTo: null,
+      }));
+    }
+
+    return { data: [...admins, ...data], meta: { page, limit, total: total + admins.length, totalPages: Math.ceil(total / limit) } };
   }
 
   async findOne(id: number, companyId: number): Promise<Employee> {

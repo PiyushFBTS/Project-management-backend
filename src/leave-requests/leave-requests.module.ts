@@ -5,13 +5,13 @@ import { LeaveRequestsEmployeeController } from './leave-requests-employee.contr
 import { LeaveRequestsAdminController } from './leave-requests-admin.controller';
 import { LeaveRequest } from '../database/entities/leave-request.entity';
 import { LeaveRequestWatcher } from '../database/entities/leave-request-watcher.entity';
-import { LeaveReason } from '../database/entities/leave-reason.entity';
+import { LeaveType } from '../database/entities/leave-reason.entity';
 import { Employee } from '../database/entities/employee.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([LeaveRequest, LeaveRequestWatcher, LeaveReason, Employee]),
+    TypeOrmModule.forFeature([LeaveRequest, LeaveRequestWatcher, LeaveType, Employee]),
     NotificationsModule,
   ],
   providers: [LeaveRequestsService],

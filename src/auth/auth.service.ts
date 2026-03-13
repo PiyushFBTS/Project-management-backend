@@ -46,6 +46,20 @@ export class AuthService {
       await this.validateCompanyLicense(admin.companyId);
     }
 
+    // Fetch company logo for the response
+    let companyLogoUrl: string | null = null;
+    let companyName: string | null = null;
+    if (admin.companyId) {
+      const company = await this.companyRepo.findOne({
+        where: { id: admin.companyId },
+        select: ['id', 'logoUrl', 'name'],
+      });
+      if (company) {
+        companyLogoUrl = company.logoUrl;
+        companyName = company.name;
+      }
+    }
+
     return {
       accessToken: this.signAdminAccess(admin),
       refreshToken: this.signAdminRefresh(admin),
@@ -55,6 +69,8 @@ export class AuthService {
         email: admin.email,
         role: admin.role,
         companyId: admin.companyId,
+        companyLogoUrl,
+        companyName,
       },
     };
   }
@@ -95,6 +111,20 @@ export class AuthService {
     return { message: 'Password changed successfully' };
   }
 
+  async enrichAdminProfile(profile: any) {
+    if (profile.companyId) {
+      const company = await this.companyRepo.findOne({
+        where: { id: profile.companyId },
+        select: ['id', 'logoUrl', 'name'],
+      });
+      if (company) {
+        profile.companyLogoUrl = company.logoUrl;
+        profile.companyName = company.name;
+      }
+    }
+    return profile;
+  }
+
   // ── Employee ───────────────────────────────────────────────────────────────
 
   async loginEmployee(dto: EmployeeLoginDto) {
@@ -114,6 +144,20 @@ export class AuthService {
     // Employees always belong to a company — validate license
     await this.validateCompanyLicense(employee.companyId);
 
+    // Fetch company logo & name for the header
+    let companyLogoUrl: string | null = null;
+    let companyName: string | null = null;
+    if (employee.companyId) {
+      const company = await this.companyRepo.findOne({
+        where: { id: employee.companyId },
+        select: ['id', 'logoUrl', 'name'],
+      });
+      if (company) {
+        companyLogoUrl = company.logoUrl;
+        companyName = company.name;
+      }
+    }
+
     return {
       accessToken: this.signEmployeeAccess(employee),
       refreshToken: this.signEmployeeRefresh(employee),
@@ -126,6 +170,8 @@ export class AuthService {
         assignedProjectId: employee.assignedProjectId,
         companyId: employee.companyId,
         isHr: employee.isHr,
+        companyLogoUrl,
+        companyName,
       },
     };
   }
@@ -158,6 +204,18 @@ export class AuthService {
     });
     if (!employee) throw new UnauthorizedException('Employee not found');
     const { passwordHash, ...profile } = employee;
+
+    // Attach company logo for header display
+    if (profile.companyId) {
+      const company = await this.companyRepo.findOne({
+        where: { id: profile.companyId },
+        select: ['id', 'logoUrl', 'name'],
+      });
+      if (company) {
+        (profile as any).companyLogoUrl = company.logoUrl;
+        (profile as any).companyName = company.name;
+      }
+    }
     return profile;
   }
 

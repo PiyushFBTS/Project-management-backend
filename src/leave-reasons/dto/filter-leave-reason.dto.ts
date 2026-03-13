@@ -3,7 +3,7 @@ import { Transform } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PaginationDto } from '../../common/dto/pagination.dto';
 
-export class FilterLeaveReasonDto extends PaginationDto {
+export class FilterLeaveTypeDto extends PaginationDto {
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()

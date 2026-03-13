@@ -22,7 +22,7 @@ import { Employee, ConsultantType } from '../entities/employee.entity';
 import { DailyTaskSheet } from '../entities/daily-task-sheet.entity';
 import { TaskEntry, TaskStatus } from '../entities/task-entry.entity';
 import { Notification, NotificationType } from '../entities/notification.entity';
-import { LeaveReason } from '../entities/leave-reason.entity';
+import { LeaveType } from '../entities/leave-reason.entity';
 import { LeaveRequest, LeaveRequestStatus } from '../entities/leave-request.entity';
 
 const BCRYPT_ROUNDS = 12;
@@ -61,8 +61,8 @@ async function seed() {
   const taskTypes = await seedTaskTypes(defaultCompany.id);
   const employees = await seedEmployees(defaultCompany.id, projects);
   await seedEmployeeHierarchy(employees);
-  const leaveReasons = await seedLeaveReasons(defaultCompany.id);
-  await seedLeaveRequests(defaultCompany.id, employees, leaveReasons);
+  const leaveTypes = await seedLeaveTypes(defaultCompany.id);
+  await seedLeaveRequests(defaultCompany.id, employees, leaveTypes);
   await seedTaskSheets(defaultCompany.id, employees, projects, taskTypes);
   await seedNotifications(defaultCompany.id);
 
@@ -403,14 +403,14 @@ async function seedEmployeeHierarchy(employees: Employee[]) {
   console.log(`[Hierarchy] Set EMP-008 as HR, EMP-001 reports to EMP-008, others report to EMP-001.`);
 }
 
-// ── Leave reasons ─────────────────────────────────────────────────────────────
+// ── Leave types ───────────────────────────────────────────────────────────────
 
-async function seedLeaveReasons(companyId: number): Promise<LeaveReason[]> {
-  const repo = AppDataSource.getRepository(LeaveReason);
+async function seedLeaveTypes(companyId: number): Promise<LeaveType[]> {
+  const repo = AppDataSource.getRepository(LeaveType);
 
   const existingCount = await repo.count({ where: { companyId } });
   if (existingCount > 0) {
-    console.log(`[LeaveReasons] Already ${existingCount} reasons — returning existing.`);
+    console.log(`[LeaveTypes] Already ${existingCount} leave types — returning existing.`);
     return repo.find({ where: { companyId } });
   }
 
@@ -422,11 +422,11 @@ async function seedLeaveReasons(companyId: number): Promise<LeaveReason[]> {
     { reasonCode: 'WFH', reasonName: 'Work From Home', description: 'Working remotely from home' },
   ];
 
-  const results: LeaveReason[] = [];
+  const results: LeaveType[] = [];
   for (const d of defs) {
     const saved = await repo.save(repo.create({ ...d, isActive: true, companyId }));
     results.push(saved);
-    console.log(`[LeaveReason] Created: ${d.reasonCode} — ${d.reasonName}`);
+    console.log(`[LeaveType] Created: ${d.reasonCode} — ${d.reasonName}`);
   }
   return results;
 }
@@ -436,7 +436,7 @@ async function seedLeaveReasons(companyId: number): Promise<LeaveReason[]> {
 async function seedLeaveRequests(
   companyId: number,
   employees: Employee[],
-  leaveReasons: LeaveReason[],
+  leaveTypes: LeaveType[],
 ) {
   const repo = AppDataSource.getRepository(LeaveRequest);
 
@@ -453,9 +453,9 @@ async function seedLeaveRequests(
   const neha = empMap.get('EMP-004')!;
   const kavita = empMap.get('EMP-008')!; // HR
 
-  const sl = leaveReasons.find((r) => r.reasonCode === 'SL')!;
-  const cl = leaveReasons.find((r) => r.reasonCode === 'CL')!;
-  const al = leaveReasons.find((r) => r.reasonCode === 'AL')!;
+  const sl = leaveTypes.find((r) => r.reasonCode === 'SL')!;
+  const cl = leaveTypes.find((r) => r.reasonCode === 'CL')!;
+  const al = leaveTypes.find((r) => r.reasonCode === 'AL')!;
 
   const requests = [
     // Priya: fully approved leave

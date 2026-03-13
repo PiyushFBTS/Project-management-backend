@@ -3,101 +3,101 @@ import {
   Param, ParseIntPipe, Patch, Post, Query, UseGuards,
 } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { LeaveReasonsService } from './leave-reasons.service';
-import { CreateLeaveReasonDto } from './dto/create-leave-reason.dto';
-import { UpdateLeaveReasonDto } from './dto/update-leave-reason.dto';
-import { FilterLeaveReasonDto } from './dto/filter-leave-reason.dto';
+import { LeaveTypesService } from './leave-reasons.service';
+import { CreateLeaveTypeDto } from './dto/create-leave-reason.dto';
+import { UpdateLeaveTypeDto } from './dto/update-leave-reason.dto';
+import { FilterLeaveTypeDto } from './dto/filter-leave-reason.dto';
 import { JwtAdminGuard } from '../auth/guards/jwt-admin.guard';
 import { JwtEmployeeGuard } from '../auth/guards/jwt-employee.guard';
 import { TenantId } from '../common/decorators/tenant-id.decorator';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { Employee } from '../database/entities/employee.entity';
 
-@ApiTags('Leave Reasons')
+@ApiTags('Leave Types')
 @ApiBearerAuth('admin-jwt')
 @UseGuards(JwtAdminGuard)
-@Controller('leave-reasons')
-export class LeaveReasonsController {
-  constructor(private readonly leaveReasonsService: LeaveReasonsService) {}
+@Controller('leave-types')
+export class LeaveTypesController {
+  constructor(private readonly leaveTypesService: LeaveTypesService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List all leave reasons' })
-  findAll(@TenantId() companyId: number, @Query() filter: FilterLeaveReasonDto) {
-    return this.leaveReasonsService.findAll(companyId, filter);
+  @ApiOperation({ summary: 'List all leave types' })
+  findAll(@TenantId() companyId: number, @Query() filter: FilterLeaveTypeDto) {
+    return this.leaveTypesService.findAll(companyId, filter);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get leave reason by ID' })
+  @ApiOperation({ summary: 'Get leave type by ID' })
   findOne(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
-    return this.leaveReasonsService.findOne(id, companyId);
+    return this.leaveTypesService.findOne(id, companyId);
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create a new leave reason' })
-  create(@TenantId() companyId: number, @Body() dto: CreateLeaveReasonDto) {
-    return this.leaveReasonsService.create(companyId, dto);
+  @ApiOperation({ summary: 'Create a new leave type' })
+  create(@TenantId() companyId: number, @Body() dto: CreateLeaveTypeDto) {
+    return this.leaveTypesService.create(companyId, dto);
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update a leave reason' })
-  update(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLeaveReasonDto) {
-    return this.leaveReasonsService.update(id, companyId, dto);
+  @ApiOperation({ summary: 'Update a leave type' })
+  update(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLeaveTypeDto) {
+    return this.leaveTypesService.update(id, companyId, dto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Soft-delete (deactivate) a leave reason' })
+  @ApiOperation({ summary: 'Soft-delete (deactivate) a leave type' })
   remove(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
-    return this.leaveReasonsService.remove(id, companyId);
+    return this.leaveTypesService.remove(id, companyId);
   }
 }
 
 // ── Employee-facing controller (read-only for all, CRUD for HR) ──
 
-@ApiTags('Employee — Leave Reasons')
+@ApiTags('Employee — Leave Types')
 @ApiBearerAuth('employee-jwt')
 @UseGuards(JwtEmployeeGuard)
-@Controller('employee/leave-reasons')
-export class EmployeeLeaveReasonsController {
-  constructor(private readonly leaveReasonsService: LeaveReasonsService) {}
+@Controller('employee/leave-types')
+export class EmployeeLeaveTypesController {
+  constructor(private readonly leaveTypesService: LeaveTypesService) {}
 
   private assertHr(employee: Employee) {
     if (!employee.isHr) {
-      throw new ForbiddenException('Only HR employees can manage leave reasons');
+      throw new ForbiddenException('Only HR employees can manage leave types');
     }
   }
 
   @Get()
-  @ApiOperation({ summary: 'List leave reasons (all employees)' })
-  findAll(@TenantId() companyId: number, @Query() filter: FilterLeaveReasonDto) {
-    return this.leaveReasonsService.findAll(companyId, filter);
+  @ApiOperation({ summary: 'List leave types (all employees)' })
+  findAll(@TenantId() companyId: number, @Query() filter: FilterLeaveTypeDto) {
+    return this.leaveTypesService.findAll(companyId, filter);
   }
 
   @Get(':id')
-  @ApiOperation({ summary: 'Get leave reason by ID (all employees)' })
+  @ApiOperation({ summary: 'Get leave type by ID (all employees)' })
   findOne(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
-    return this.leaveReasonsService.findOne(id, companyId);
+    return this.leaveTypesService.findOne(id, companyId);
   }
 
   @Post()
-  @ApiOperation({ summary: 'Create leave reason (HR only)' })
-  create(@CurrentUser() employee: Employee, @TenantId() companyId: number, @Body() dto: CreateLeaveReasonDto) {
+  @ApiOperation({ summary: 'Create leave type (HR only)' })
+  create(@CurrentUser() employee: Employee, @TenantId() companyId: number, @Body() dto: CreateLeaveTypeDto) {
     this.assertHr(employee);
-    return this.leaveReasonsService.create(companyId, dto);
+    return this.leaveTypesService.create(companyId, dto);
   }
 
   @Patch(':id')
-  @ApiOperation({ summary: 'Update leave reason (HR only)' })
-  update(@CurrentUser() employee: Employee, @TenantId() companyId: number, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLeaveReasonDto) {
+  @ApiOperation({ summary: 'Update leave type (HR only)' })
+  update(@CurrentUser() employee: Employee, @TenantId() companyId: number, @Param('id', ParseIntPipe) id: number, @Body() dto: UpdateLeaveTypeDto) {
     this.assertHr(employee);
-    return this.leaveReasonsService.update(id, companyId, dto);
+    return this.leaveTypesService.update(id, companyId, dto);
   }
 
   @Delete(':id')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Deactivate leave reason (HR only)' })
+  @ApiOperation({ summary: 'Deactivate leave type (HR only)' })
   remove(@CurrentUser() employee: Employee, @TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
     this.assertHr(employee);
-    return this.leaveReasonsService.remove(id, companyId);
+    return this.leaveTypesService.remove(id, companyId);
   }
 }

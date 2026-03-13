@@ -21,13 +21,19 @@ import { Employee } from './entities/employee.entity';
 import { DailyTaskSheet } from './entities/daily-task-sheet.entity';
 import { TaskEntry } from './entities/task-entry.entity';
 import { Notification } from './entities/notification.entity';
-import { LeaveReason } from './entities/leave-reason.entity';
+import { LeaveType } from './entities/leave-reason.entity';
 import { LeaveRequest } from './entities/leave-request.entity';
 import { LeaveRequestWatcher } from './entities/leave-request-watcher.entity';
 import { SmtpConfig } from './entities/smtp-config.entity';
 import { ProjectPhase } from './entities/project-phase.entity';
 import { ProjectTask } from './entities/project-task.entity';
 import { ProjectTaskComment } from './entities/project-task-comment.entity';
+import { ProjectTaskHistory } from './entities/project-task-history.entity';
+import { Country } from './entities/country.entity';
+import { State } from './entities/state.entity';
+import { City } from './entities/city.entity';
+import { Currency } from './entities/currency.entity';
+import { PostalCode } from './entities/postal-code.entity';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -36,7 +42,7 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USERNAME || 'root',
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_DATABASE || 'it_project_management',
-  entities: [Company, AdminUser, Project, TaskType, Employee, DailyTaskSheet, TaskEntry, Notification, LeaveReason, LeaveRequest, LeaveRequestWatcher, SmtpConfig, ProjectPhase, ProjectTask, ProjectTaskComment],
+  entities: [Company, AdminUser, Project, TaskType, Employee, DailyTaskSheet, TaskEntry, Notification, LeaveType, LeaveRequest, LeaveRequestWatcher, SmtpConfig, ProjectPhase, ProjectTask, ProjectTaskComment, ProjectTaskHistory, Country, State, City, Currency, PostalCode],
   migrations: [join(__dirname, 'migrations', '*.ts')],
   synchronize: false,
   logging: process.env.DB_LOGGING === 'true',

@@ -97,6 +97,19 @@ export class ProjectsService {
     return { message: `Project #${id} deactivated successfully` };
   }
 
+  async findByEmployeeTickets(companyId: number, employeeId: number) {
+    const projects = await this.projectRepo
+      .createQueryBuilder('p')
+      .where('p.companyId = :companyId', { companyId })
+      .andWhere(
+        `p.id IN (SELECT DISTINCT t.project_id FROM project_tasks t WHERE t.company_id = :companyId AND t.assignee_id = :employeeId)`,
+        { companyId, employeeId },
+      )
+      .orderBy('p.projectName', 'ASC')
+      .getMany();
+    return { data: projects, meta: { total: projects.length } };
+  }
+
   async getEmployees(id: number, companyId: number) {
     await this.findOne(id, companyId);
     return this.employeeRepo.find({

@@ -89,6 +89,13 @@ export class CompaniesService {
     return this.companyRepo.save(company);
   }
 
+  async updateLogo(id: number, logoUrl: string) {
+    const company = await this.findOne(id);
+    company.logoUrl = logoUrl;
+    await this.companyRepo.save(company);
+    return { logoUrl };
+  }
+
   async deactivate(id: number) {
     const company = await this.findOne(id);
     company.isActive = false;

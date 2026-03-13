@@ -11,7 +11,7 @@ import {
 } from 'typeorm';
 import { Company } from './company.entity';
 import { Employee } from './employee.entity';
-import { LeaveReason } from './leave-reason.entity';
+import { LeaveType } from './leave-reason.entity';
 import { LeaveRequestWatcher } from './leave-request-watcher.entity';
 
 export enum LeaveRequestStatus {
@@ -38,9 +38,9 @@ export class LeaveRequest {
   @Column({ name: 'leave_reason_id' })
   leaveReasonId: number;
 
-  @ManyToOne(() => LeaveReason, { onDelete: 'RESTRICT' })
+  @ManyToOne(() => LeaveType, { onDelete: 'RESTRICT' })
   @JoinColumn({ name: 'leave_reason_id' })
-  leaveReason: LeaveReason;
+  leaveReason: LeaveType;
 
   @Column({ name: 'date_from', type: 'date' })
   dateFrom: string;

@@ -11,7 +11,7 @@ import {
 import { Company } from './company.entity';
 
 @Entity('leave_reasons')
-export class LeaveReason {
+export class LeaveType {
   @PrimaryGeneratedColumn()
   id: number;
 
