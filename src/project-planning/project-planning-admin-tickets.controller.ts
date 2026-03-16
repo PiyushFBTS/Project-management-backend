@@ -69,14 +69,14 @@ export class ProjectPlanningAdminTicketsController {
   }
 
   @Patch(':taskId/reassign')
-  @ApiOperation({ summary: 'Reassign any task to another employee' })
+  @ApiOperation({ summary: 'Reassign any task to an employee or admin' })
   reassignTask(
     @Param('taskId', ParseIntPipe) taskId: number,
     @TenantId() companyId: number,
     @CurrentUser('id') adminId: number,
     @Body() dto: ReassignTaskDto,
   ) {
-    return this.service.adminReassignTask(taskId, companyId, dto.assigneeId, adminId);
+    return this.service.adminReassignTask(taskId, companyId, dto.assigneeId, adminId, dto.assigneeType);
   }
 
   @Get(':taskId/history')

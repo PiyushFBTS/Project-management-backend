@@ -700,17 +700,12 @@ export class ProjectPlanningService {
     return saved;
   }
 
-  async adminReassignTask(taskId: number, companyId: number, newAssigneeId: number, adminId?: number) {
+  async adminReassignTask(taskId: number, companyId: number, newAssigneeId: number, adminId?: number, assigneeType?: string) {
     const task = await this.taskRepo.findOne({
       where: { id: taskId, companyId },
-      relations: ['project', 'assignee'],
+      relations: ['project', 'assignee', 'assignedAdmin'],
     });
     if (!task) throw new NotFoundException('Task not found');
-
-    const newAssignee = await this.employeeRepo.findOne({
-      where: { id: newAssigneeId, companyId, isActive: true },
-    });
-    if (!newAssignee) throw new NotFoundException(`Employee #${newAssigneeId} not found`);
 
     let assignerName = 'Admin';
     if (adminId) {
@@ -718,11 +713,45 @@ export class ProjectPlanningService {
       if (admin) assignerName = admin.name;
     }
 
+    const prevAssigneeName = task.assignee?.empName ?? task.assignedAdmin?.name ?? 'Unassigned';
     const prevAssigneeId = task.assigneeId;
-    const prevAssigneeName = task.assignee?.empName ?? 'Unassigned';
-    task.assigneeId = newAssigneeId;
-    task.assignee = null;
-    const saved = await this.taskRepo.save(task);
+
+    if (assigneeType === 'admin') {
+      // Reassign to an admin user
+      const newAdmin = await this.adminRepo.findOne({
+        where: { id: newAssigneeId, isActive: true },
+      });
+      if (!newAdmin) throw new NotFoundException(`Admin #${newAssigneeId} not found`);
+
+      // Use query builder to avoid TypeORM relation-nulling issues
+      await this.taskRepo.update(taskId, {
+        assignedAdminId: newAssigneeId,
+        assigneeId: null as any,
+      });
+      const saved = await this.taskRepo.findOne({ where: { id: taskId }, relations: ['project'] });
+
+      await this.recordHistory(
+        taskId, companyId, TaskHistoryAction.REASSIGNED,
+        adminId ?? 0, 'admin', assignerName,
+        prevAssigneeName, newAdmin.name,
+        `Reassigned from ${prevAssigneeName} to ${newAdmin.name} (admin)`,
+      );
+
+      return saved;
+    }
+
+    // Default: reassign to an employee
+    const newAssignee = await this.employeeRepo.findOne({
+      where: { id: newAssigneeId, companyId, isActive: true },
+    });
+    if (!newAssignee) throw new NotFoundException(`Employee #${newAssigneeId} not found`);
+
+    // Use query builder to avoid TypeORM relation-nulling issues
+    await this.taskRepo.update(taskId, {
+      assigneeId: newAssigneeId,
+      assignedAdminId: null as any,
+    });
+    const saved = await this.taskRepo.findOne({ where: { id: taskId }, relations: ['project'] });
 
     // Record history
     await this.recordHistory(
@@ -732,7 +761,7 @@ export class ProjectPlanningService {
       `Reassigned from ${prevAssigneeName} to ${newAssignee.empName}`,
     );
 
-    // Skip notification if reassigning to the same person (self-assign / no change)
+    // Skip notification if reassigning to the same person
     if (newAssigneeId !== prevAssigneeId) {
       await this.notificationsService.create(
         NotificationType.TASK_ASSIGNED,

@@ -11,6 +11,7 @@ import {
 } from 'typeorm';
 import { Company } from './company.entity';
 import { Employee } from './employee.entity';
+import { AdminUser } from './admin-user.entity';
 import { LeaveType } from './leave-reason.entity';
 import { LeaveRequestWatcher } from './leave-request-watcher.entity';
 
@@ -28,12 +29,19 @@ export class LeaveRequest {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Column({ name: 'employee_id' })
-  employeeId: number;
+  @Column({ name: 'employee_id', nullable: true })
+  employeeId: number | null;
 
-  @ManyToOne(() => Employee, { onDelete: 'CASCADE' })
+  @ManyToOne(() => Employee, { nullable: true, onDelete: 'CASCADE' })
   @JoinColumn({ name: 'employee_id' })
   employee: Employee;
+
+  @Column({ name: 'admin_id', nullable: true })
+  adminId: number | null;
+
+  @ManyToOne(() => AdminUser, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'admin_id' })
+  admin: AdminUser;
 
   @Column({ name: 'leave_reason_id' })
   leaveReasonId: number;

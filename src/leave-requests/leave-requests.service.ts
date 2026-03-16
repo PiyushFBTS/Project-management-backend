@@ -98,6 +98,60 @@ export class LeaveRequestsService {
     return this.findOneInternal(saved.id, employee.companyId);
   }
 
+  // ── Admin: submit leave request ─────────────────────────────────────────────
+
+  async submitAdminLeave(adminId: number, companyId: number, dto: CreateLeaveRequestDto) {
+    // Validate leave type exists and is active
+    const leaveType = await this.leaveTypeRepo.findOne({
+      where: { id: dto.leaveReasonId, companyId, isActive: true },
+    });
+    if (!leaveType) throw new NotFoundException('Leave type not found or inactive');
+
+    // Validate dates
+    if (dto.dateTo < dto.dateFrom) {
+      throw new BadRequestException('"Date To" must be on or after "Date From"');
+    }
+
+    // Check for overlapping admin leave requests
+    const overlap = await this.leaveRequestRepo
+      .createQueryBuilder('lr')
+      .where('lr.adminId = :aid', { aid: adminId })
+      .andWhere('lr.companyId = :cid', { cid: companyId })
+      .andWhere('lr.status NOT IN (:...excluded)', {
+        excluded: [LeaveRequestStatus.MANAGER_REJECTED, LeaveRequestStatus.HR_REJECTED, LeaveRequestStatus.CANCELLED],
+      })
+      .andWhere('lr.dateFrom <= :to AND lr.dateTo >= :from', { from: dto.dateFrom, to: dto.dateTo })
+      .getOne();
+
+    if (overlap) {
+      throw new BadRequestException('You already have a leave request that overlaps with these dates');
+    }
+
+    // Create the leave request (admin — no manager approval needed)
+    const lr = this.leaveRequestRepo.create({
+      adminId,
+      employeeId: null,
+      leaveReasonId: dto.leaveReasonId,
+      dateFrom: dto.dateFrom,
+      dateTo: dto.dateTo,
+      remarks: dto.remarks ?? null,
+      status: LeaveRequestStatus.PENDING,
+      managerId: null,
+      companyId,
+    });
+    const saved = await this.leaveRequestRepo.save(lr);
+
+    // Create watchers
+    if (dto.watcherIds?.length) {
+      const watchers = [...new Set(dto.watcherIds)].map((eid) =>
+        this.watcherRepo.create({ leaveRequestId: saved.id, employeeId: eid, companyId }),
+      );
+      await this.watcherRepo.save(watchers);
+    }
+
+    return this.findOneInternal(saved.id, companyId);
+  }
+
   // ── Employee: my leave history ──────────────────────────────────────────────
 
   async findMyLeaves(employeeId: number, companyId: number, filter: FilterLeaveRequestDto) {
@@ -346,6 +400,70 @@ export class LeaveRequestsService {
     throw new ForbiddenException('You are not authorized to reject this request in its current state');
   }
 
+  // ── Admin: cancel a leave request ──────────────────────────────────────────
+
+  async adminCancel(id: number, companyId: number) {
+    const lr = await this.findOneInternal(id, companyId);
+
+    if (![LeaveRequestStatus.PENDING, LeaveRequestStatus.MANAGER_APPROVED].includes(lr.status)) {
+      throw new BadRequestException('Only pending or manager-approved requests can be cancelled');
+    }
+
+    lr.status = LeaveRequestStatus.CANCELLED;
+    await this.leaveRequestRepo.save(lr);
+    return this.findOneInternal(id, companyId);
+  }
+
+  // ── Admin: approve a leave request ────────────────────────────────────────
+
+  async adminApprove(id: number, companyId: number, dto: ActionLeaveRequestDto) {
+    const lr = await this.findOneInternal(id, companyId);
+
+    if (lr.status === LeaveRequestStatus.PENDING) {
+      // Admin acts as manager approval
+      lr.status = LeaveRequestStatus.MANAGER_APPROVED;
+      lr.managerActionAt = new Date();
+      lr.managerRemarks = dto.remarks ?? null;
+      await this.leaveRequestRepo.save(lr);
+      return this.findOneInternal(id, companyId);
+    }
+
+    if (lr.status === LeaveRequestStatus.MANAGER_APPROVED) {
+      // Admin acts as HR approval
+      lr.status = LeaveRequestStatus.HR_APPROVED;
+      lr.hrActionAt = new Date();
+      lr.hrRemarks = dto.remarks ?? null;
+      await this.leaveRequestRepo.save(lr);
+      return this.findOneInternal(id, companyId);
+    }
+
+    throw new BadRequestException('This request cannot be approved in its current state');
+  }
+
+  // ── Admin: reject a leave request ─────────────────────────────────────────
+
+  async adminReject(id: number, companyId: number, dto: ActionLeaveRequestDto) {
+    const lr = await this.findOneInternal(id, companyId);
+
+    if (lr.status === LeaveRequestStatus.PENDING) {
+      lr.status = LeaveRequestStatus.MANAGER_REJECTED;
+      lr.managerActionAt = new Date();
+      lr.managerRemarks = dto.remarks ?? null;
+      await this.leaveRequestRepo.save(lr);
+      return this.findOneInternal(id, companyId);
+    }
+
+    if (lr.status === LeaveRequestStatus.MANAGER_APPROVED) {
+      lr.status = LeaveRequestStatus.HR_REJECTED;
+      lr.hrActionAt = new Date();
+      lr.hrRemarks = dto.remarks ?? null;
+      await this.leaveRequestRepo.save(lr);
+      return this.findOneInternal(id, companyId);
+    }
+
+    throw new BadRequestException('This request cannot be rejected in its current state');
+  }
+
   // ── Admin: list all company leave requests ──────────────────────────────────
 
   async findAll(companyId: number, filter: FilterLeaveRequestDto) {
@@ -432,7 +550,7 @@ export class LeaveRequestsService {
   private async findOneInternal(id: number, companyId: number): Promise<LeaveRequest> {
     const lr = await this.leaveRequestRepo.findOne({
       where: { id, companyId },
-      relations: ['leaveReason', 'employee', 'manager', 'hr', 'watchers', 'watchers.employee'],
+      relations: ['leaveReason', 'employee', 'admin', 'manager', 'hr', 'watchers', 'watchers.employee'],
     });
     if (!lr) throw new NotFoundException(`Leave request #${id} not found`);
     return lr;
