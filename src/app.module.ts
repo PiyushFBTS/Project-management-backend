@@ -22,6 +22,7 @@ import { CompaniesModule } from './companies/companies.module';
 import { LeaveTypesModule } from './leave-reasons/leave-reasons.module';
 import { LeaveRequestsModule } from './leave-requests/leave-requests.module';
 import { SmtpModule } from './smtp/smtp.module';
+import { EmailLogsModule } from './email-logs/email-logs.module';
 import { ProjectPlanningModule } from './project-planning/project-planning.module';
 import { LocationModule } from './location/location.module';
 
@@ -70,6 +71,7 @@ import { LocationModule } from './location/location.module';
     LeaveTypesModule,
     LeaveRequestsModule,
     SmtpModule,
+    EmailLogsModule,
     ProjectPlanningModule,
     LocationModule,
   ],

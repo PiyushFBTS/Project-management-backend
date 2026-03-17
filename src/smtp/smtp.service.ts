@@ -4,11 +4,14 @@ import { IsNull, Repository } from 'typeorm';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
 import * as crypto from 'crypto';
+import * as fs from 'fs';
+import * as path from 'path';
 import {
   SmtpConfig,
   SmtpEncryption,
 } from '../database/entities/smtp-config.entity';
 import { SaveSmtpConfigDto } from './dto/save-smtp-config.dto';
+import { EmailLogsService } from '../email-logs/email-logs.service';
 
 @Injectable()
 export class SmtpService {
@@ -18,6 +21,7 @@ export class SmtpService {
     @InjectRepository(SmtpConfig)
     private readonly smtpRepo: Repository<SmtpConfig>,
     private readonly configService: ConfigService,
+    private readonly emailLogsService: EmailLogsService,
   ) {
     this.encryptionKey = this.configService.get<string>(
       'SMTP_ENCRYPTION_KEY',
@@ -190,6 +194,16 @@ export class SmtpService {
       );
     }
 
+    this.emailLogsService.logEmail({
+      subject: 'SMTP Configuration Test',
+      body: '<h3>SMTP Test Successful</h3><p>Your SMTP configuration is working correctly.</p>',
+      toEmail: recipientEmail,
+      fromEmail: config.fromEmail,
+      fromName: config.fromName ?? undefined,
+      triggeredBy: 'test_email',
+      companyId: config.companyId,
+    }).catch(() => {});
+
     return { message: 'Test email sent successfully' };
   }
 
@@ -201,6 +215,7 @@ export class SmtpService {
     subject: string,
     body: string,
     attachments?: Express.Multer.File[],
+    triggeredBy?: string,
   ): Promise<{ message: string }> {
     const config = await this.smtpRepo.findOne({ where: { id: configId } });
     if (!config)
@@ -246,7 +261,49 @@ export class SmtpService {
       );
     }
 
+    // Save attachment files to disk and collect metadata for the log
+    const savedAttachments = await this._saveAttachmentsToDisk(attachments ?? []);
+
+    this.emailLogsService.logEmail({
+      subject,
+      body,
+      toEmail: recipientEmail,
+      fromEmail: config.fromEmail,
+      fromName: config.fromName ?? undefined,
+      triggeredBy: triggeredBy ?? 'manual',
+      companyId: config.companyId,
+      attachments: savedAttachments.length ? savedAttachments : undefined,
+    }).catch(() => {});
+
     return { message: 'Email sent successfully' };
+  }
+
+  // ── Save attachment files to disk ─────────────────────────────────────────
+
+  private async _saveAttachmentsToDisk(
+    files: Express.Multer.File[],
+  ): Promise<{ filename: string; path: string; mimetype: string; size: number }[]> {
+    if (!files || files.length === 0) return [];
+
+    const timestamp = Date.now();
+    const dir = path.join(process.cwd(), 'uploads', 'email-attachments', String(timestamp));
+    fs.mkdirSync(dir, { recursive: true });
+
+    const results: { filename: string; path: string; mimetype: string; size: number }[] = [];
+
+    for (const file of files) {
+      const safeFilename = file.originalname.replace(/[^a-zA-Z0-9._-]/g, '_');
+      const fullPath = path.join(dir, safeFilename);
+      fs.writeFileSync(fullPath, file.buffer);
+      results.push({
+        filename: file.originalname,
+        path: `email-attachments/${timestamp}/${safeFilename}`,
+        mimetype: file.mimetype,
+        size: file.size,
+      });
+    }
+
+    return results;
   }
 
   // ── Resolve transporter (company → global fallback) ──────────────────────
