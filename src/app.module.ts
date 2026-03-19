@@ -3,6 +3,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ServeStaticModule } from '@nestjs/serve-static';
+import { ScheduleModule } from '@nestjs/schedule';
 import { APP_INTERCEPTOR, APP_GUARD } from '@nestjs/core';
 import { join } from 'path';
 import { databaseConfig } from './config/database.config';
@@ -25,10 +26,12 @@ import { SmtpModule } from './smtp/smtp.module';
 import { EmailLogsModule } from './email-logs/email-logs.module';
 import { ProjectPlanningModule } from './project-planning/project-planning.module';
 import { LocationModule } from './location/location.module';
+import { BirthdayNotifierModule } from './birthday-notifier/birthday-notifier.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: '.env' }),
+    ScheduleModule.forRoot(),
 
     ServeStaticModule.forRoot({
       rootPath: join(__dirname, '..', 'uploads'),
@@ -74,6 +77,7 @@ import { LocationModule } from './location/location.module';
     EmailLogsModule,
     ProjectPlanningModule,
     LocationModule,
+    BirthdayNotifierModule,
   ],
   providers: [
     // Sets request.tenantId from the authenticated user's companyId

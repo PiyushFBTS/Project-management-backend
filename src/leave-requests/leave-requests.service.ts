@@ -15,6 +15,18 @@ import { FilterLeaveRequestDto } from './dto/filter-leave-request.dto';
 
 const SORTABLE = ['id', 'dateFrom', 'dateTo', 'totalDays', 'status', 'createdAt'];
 
+// Statuses that HR can act on (override at any level)
+const HR_ACTIONABLE = [
+  LeaveRequestStatus.PENDING,
+  LeaveRequestStatus.MANAGER_APPROVED,
+];
+
+// Statuses where a request is still cancellable
+const CANCELLABLE = [
+  LeaveRequestStatus.PENDING,
+  LeaveRequestStatus.MANAGER_APPROVED,
+];
+
 @Injectable()
 export class LeaveRequestsService {
   constructor(
@@ -48,14 +60,17 @@ export class LeaveRequestsService {
       throw new BadRequestException('"Date To" must be on or after "Date From"');
     }
 
-    // Check for overlapping leave requests
+    // Check for overlapping leave requests (exclude all terminal statuses)
+    const EXCLUDED_FOR_OVERLAP = [
+      LeaveRequestStatus.MANAGER_REJECTED,
+      LeaveRequestStatus.HR_REJECTED,
+      LeaveRequestStatus.CANCELLED,
+    ];
     const overlap = await this.leaveRequestRepo
       .createQueryBuilder('lr')
       .where('lr.employeeId = :eid', { eid: employee.id })
       .andWhere('lr.companyId = :cid', { cid: employee.companyId })
-      .andWhere('lr.status NOT IN (:...excluded)', {
-        excluded: [LeaveRequestStatus.MANAGER_REJECTED, LeaveRequestStatus.HR_REJECTED, LeaveRequestStatus.CANCELLED],
-      })
+      .andWhere('lr.status NOT IN (:...excluded)', { excluded: EXCLUDED_FOR_OVERLAP })
       .andWhere('lr.dateFrom <= :to AND lr.dateTo >= :from', { from: dto.dateFrom, to: dto.dateTo })
       .getOne();
 
@@ -85,7 +100,7 @@ export class LeaveRequestsService {
       await this.watcherRepo.save(watchers);
     }
 
-    // Notify reporting manager
+    // Notify RM
     await this.notificationsService.create(
       NotificationType.LEAVE_REQUEST_SUBMITTED,
       'Leave Request Submitted',
@@ -101,25 +116,25 @@ export class LeaveRequestsService {
   // ── Admin: submit leave request ─────────────────────────────────────────────
 
   async submitAdminLeave(adminId: number, companyId: number, dto: CreateLeaveRequestDto) {
-    // Validate leave type exists and is active
     const leaveType = await this.leaveTypeRepo.findOne({
       where: { id: dto.leaveReasonId, companyId, isActive: true },
     });
     if (!leaveType) throw new NotFoundException('Leave type not found or inactive');
 
-    // Validate dates
     if (dto.dateTo < dto.dateFrom) {
       throw new BadRequestException('"Date To" must be on or after "Date From"');
     }
 
-    // Check for overlapping admin leave requests
+    const EXCLUDED_FOR_OVERLAP = [
+      LeaveRequestStatus.MANAGER_REJECTED,
+      LeaveRequestStatus.HR_REJECTED,
+      LeaveRequestStatus.CANCELLED,
+    ];
     const overlap = await this.leaveRequestRepo
       .createQueryBuilder('lr')
       .where('lr.adminId = :aid', { aid: adminId })
       .andWhere('lr.companyId = :cid', { cid: companyId })
-      .andWhere('lr.status NOT IN (:...excluded)', {
-        excluded: [LeaveRequestStatus.MANAGER_REJECTED, LeaveRequestStatus.HR_REJECTED, LeaveRequestStatus.CANCELLED],
-      })
+      .andWhere('lr.status NOT IN (:...excluded)', { excluded: EXCLUDED_FOR_OVERLAP })
       .andWhere('lr.dateFrom <= :to AND lr.dateTo >= :from', { from: dto.dateFrom, to: dto.dateTo })
       .getOne();
 
@@ -127,7 +142,6 @@ export class LeaveRequestsService {
       throw new BadRequestException('You already have a leave request that overlaps with these dates');
     }
 
-    // Create the leave request (admin — no manager approval needed)
     const lr = this.leaveRequestRepo.create({
       adminId,
       employeeId: null,
@@ -141,7 +155,6 @@ export class LeaveRequestsService {
     });
     const saved = await this.leaveRequestRepo.save(lr);
 
-    // Create watchers
     if (dto.watcherIds?.length) {
       const watchers = [...new Set(dto.watcherIds)].map((eid) =>
         this.watcherRepo.create({ leaveRequestId: saved.id, employeeId: eid, companyId }),
@@ -178,7 +191,7 @@ export class LeaveRequestsService {
     return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
-  // ── Employee: pending approvals (for managers & HR) ──────────────────────────
+  // ── Employee: pending approvals (for PM, RM, and HR) ────────────────────────
 
   async findPendingApprovals(employee: Employee, filter: FilterLeaveRequestDto) {
     const { page = 1, limit = 20, sort = 'createdAt', order = 'desc' } = filter;
@@ -195,14 +208,11 @@ export class LeaveRequestsService {
       .take(limit)
       .orderBy(`lr.${SORTABLE.includes(sort) ? sort : 'createdAt'}`, order.toUpperCase() as 'ASC' | 'DESC');
 
-    // Manager sees requests where they are the manager and status is pending
-    // HR sees requests where status is manager_approved
     if (employee.isHr) {
-      qb.andWhere(
-        '(lr.managerId = :myId AND lr.status = :pending) OR (lr.status = :mgrApproved)',
-        { myId: employee.id, pending: LeaveRequestStatus.PENDING, mgrApproved: LeaveRequestStatus.MANAGER_APPROVED },
-      );
+      // HR sees everything in HR_ACTIONABLE states
+      qb.andWhere('lr.status IN (:...statuses)', { statuses: HR_ACTIONABLE });
     } else {
+      // RM sees pending requests assigned to them
       qb.andWhere('lr.managerId = :myId AND lr.status = :pending', {
         myId: employee.id,
         pending: LeaveRequestStatus.PENDING,
@@ -213,12 +223,47 @@ export class LeaveRequestsService {
     return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
+  // ── Employee: team leaves (for PM, RM, HR) ───────────────────────────────────
+
+  async findTeamLeaves(employee: Employee, filter: FilterLeaveRequestDto) {
+    const { page = 1, limit = 20, sort = 'createdAt', order = 'desc', status, dateFrom, dateTo, employeeId } = filter;
+
+    const qb = this.leaveRequestRepo
+      .createQueryBuilder('lr')
+      .leftJoinAndSelect('lr.leaveReason', 'reason')
+      .leftJoin('lr.employee', 'emp')
+      .addSelect(['emp.id', 'emp.empName', 'emp.empCode'])
+      .leftJoin('lr.manager', 'mgr')
+      .addSelect(['mgr.id', 'mgr.empName', 'mgr.empCode'])
+      .leftJoin('lr.hr', 'hr')
+      .addSelect(['hr.id', 'hr.empName', 'hr.empCode'])
+      .where('lr.companyId = :companyId', { companyId: employee.companyId })
+      .skip((page - 1) * limit)
+      .take(limit)
+      .orderBy(`lr.${SORTABLE.includes(sort) ? sort : 'createdAt'}`, order.toUpperCase() as 'ASC' | 'DESC');
+
+    if (employee.isHr) {
+      // HR sees all employee leaves (not admin leaves)
+      qb.andWhere('lr.employeeId IS NOT NULL');
+    } else {
+      // RM sees leaves where they are the manager
+      qb.andWhere('lr.managerId = :myId', { myId: employee.id });
+    }
+
+    if (status) qb.andWhere('lr.status = :status', { status });
+    if (employeeId) qb.andWhere('lr.employeeId = :employeeId', { employeeId });
+    if (dateFrom) qb.andWhere('lr.dateFrom >= :dateFrom', { dateFrom });
+    if (dateTo) qb.andWhere('lr.dateTo <= :dateTo', { dateTo });
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
+  }
+
   // ── Employee: single leave request detail ───────────────────────────────────
 
   async findOneForEmployee(id: number, employee: Employee) {
     const lr = await this.findOneInternal(id, employee.companyId);
 
-    // Employee can see own request, or if they're the manager, or HR, or a watcher
     const isOwner = lr.employeeId === employee.id;
     const isManager = lr.managerId === employee.id;
     const isHr = employee.isHr;
@@ -239,22 +284,21 @@ export class LeaveRequestsService {
     if (lr.employeeId !== employee.id) {
       throw new ForbiddenException('You can only cancel your own leave requests');
     }
-    if (lr.status !== LeaveRequestStatus.PENDING) {
-      throw new BadRequestException('Only pending requests can be cancelled');
+    if (!CANCELLABLE.includes(lr.status)) {
+      throw new BadRequestException('Only pending or approved requests can be cancelled');
     }
 
+    const notifyId = lr.managerId;
     lr.status = LeaveRequestStatus.CANCELLED;
     await this.leaveRequestRepo.save(lr);
-
-    // Notify manager
-    if (lr.managerId) {
+    if (notifyId) {
       await this.notificationsService.create(
         NotificationType.LEAVE_REQUEST_CANCELLED,
         'Leave Request Cancelled',
         `${employee.empName} has cancelled their leave request (${lr.dateFrom} to ${lr.dateTo}).`,
         employee.companyId,
         { leaveRequestId: lr.id, employeeId: employee.id },
-        lr.managerId,
+        notifyId,
       );
     }
 
@@ -266,33 +310,36 @@ export class LeaveRequestsService {
   async approve(id: number, employee: Employee, dto: ActionLeaveRequestDto) {
     const lr = await this.findOneInternal(id, employee.companyId);
 
-    // Manager approval
-    if (lr.status === LeaveRequestStatus.PENDING && lr.managerId === employee.id) {
+    // ── Level 1: RM approval ──
+    if (lr.managerId === employee.id && lr.status === LeaveRequestStatus.PENDING) {
       lr.status = LeaveRequestStatus.MANAGER_APPROVED;
       lr.managerActionAt = new Date();
       lr.managerRemarks = dto.remarks ?? null;
       await this.leaveRequestRepo.save(lr);
 
       // Notify employee
-      await this.notificationsService.create(
-        NotificationType.LEAVE_REQUEST_MANAGER_APPROVED,
-        'Leave Request Approved by Manager',
-        `Your leave request (${lr.dateFrom} to ${lr.dateTo}) has been approved by your manager.`,
-        employee.companyId,
-        { leaveRequestId: lr.id, employeeId: lr.employeeId },
-        lr.employeeId,
-      );
+      if (lr.employeeId) {
+        await this.notificationsService.create(
+          NotificationType.LEAVE_REQUEST_MANAGER_APPROVED,
+          'Leave Request Approved by Manager',
+          `Your leave request (${lr.dateFrom} to ${lr.dateTo}) has been approved by your Reporting Manager.`,
+          employee.companyId,
+          { leaveRequestId: lr.id, employeeId: lr.employeeId },
+          lr.employeeId,
+        );
+      }
 
-      // Notify HR(s) that a request is awaiting their approval
+      // Notify all HR employees
       const hrEmployees = await this.employeeRepo.find({
         where: { companyId: employee.companyId, isHr: true, isActive: true },
         select: ['id'],
       });
+      const empName = (await this.employeeRepo.findOne({ where: { id: lr.employeeId } }))?.empName ?? '';
       for (const hr of hrEmployees) {
         await this.notificationsService.create(
           NotificationType.LEAVE_REQUEST_MANAGER_APPROVED,
           'Leave Request Awaiting HR Approval',
-          `${(await this.employeeRepo.findOne({ where: { id: lr.employeeId } }))?.empName}'s leave request (${lr.dateFrom} to ${lr.dateTo}) has been approved by manager and needs HR approval.`,
+          `${empName}'s leave request (${lr.dateFrom} to ${lr.dateTo}) has been approved by manager and needs HR approval.`,
           employee.companyId,
           { leaveRequestId: lr.id, employeeId: lr.employeeId },
           hr.id,
@@ -302,31 +349,33 @@ export class LeaveRequestsService {
       return this.findOneInternal(id, employee.companyId);
     }
 
-    // HR approval
-    if (lr.status === LeaveRequestStatus.MANAGER_APPROVED && employee.isHr) {
+    // ── Level 2: HR approval (override at any level) ──
+    if (employee.isHr && HR_ACTIONABLE.includes(lr.status)) {
       lr.status = LeaveRequestStatus.HR_APPROVED;
       lr.hrId = employee.id;
       lr.hrActionAt = new Date();
       lr.hrRemarks = dto.remarks ?? null;
       await this.leaveRequestRepo.save(lr);
 
-      // Notify employee
-      const hrApprovedEmp = await this.employeeRepo.findOne({ where: { id: lr.employeeId } });
-      await this.notificationsService.create(
-        NotificationType.LEAVE_REQUEST_HR_APPROVED,
-        'Leave Request Fully Approved',
-        `Your leave request (${lr.dateFrom} to ${lr.dateTo}) has been fully approved by HR.`,
-        employee.companyId,
-        { leaveRequestId: lr.id, employeeId: lr.employeeId },
-        lr.employeeId,
-      );
+      const approvedEmp = lr.employeeId
+        ? await this.employeeRepo.findOne({ where: { id: lr.employeeId } })
+        : null;
 
-      // Notify manager
+      if (lr.employeeId) {
+        await this.notificationsService.create(
+          NotificationType.LEAVE_REQUEST_HR_APPROVED,
+          'Leave Request Fully Approved',
+          `Your leave request (${lr.dateFrom} to ${lr.dateTo}) has been fully approved by HR.`,
+          employee.companyId,
+          { leaveRequestId: lr.id, employeeId: lr.employeeId },
+          lr.employeeId,
+        );
+      }
       if (lr.managerId) {
         await this.notificationsService.create(
           NotificationType.LEAVE_REQUEST_HR_APPROVED,
           'Leave Request Fully Approved',
-          `Leave request (${lr.dateFrom} to ${lr.dateTo}) for ${hrApprovedEmp?.empName} has been fully approved by HR.`,
+          `Leave request (${lr.dateFrom} to ${lr.dateTo}) for ${approvedEmp?.empName} has been fully approved by HR.`,
           employee.companyId,
           { leaveRequestId: lr.id, employeeId: lr.employeeId },
           lr.managerId,
@@ -344,50 +393,53 @@ export class LeaveRequestsService {
   async reject(id: number, employee: Employee, dto: ActionLeaveRequestDto) {
     const lr = await this.findOneInternal(id, employee.companyId);
 
-    // Manager rejection
-    if (lr.status === LeaveRequestStatus.PENDING && lr.managerId === employee.id) {
+    // ── Level 1: RM rejection ──
+    if (lr.managerId === employee.id && lr.status === LeaveRequestStatus.PENDING) {
       lr.status = LeaveRequestStatus.MANAGER_REJECTED;
       lr.managerActionAt = new Date();
       lr.managerRemarks = dto.remarks ?? null;
       await this.leaveRequestRepo.save(lr);
 
-      await this.notificationsService.create(
-        NotificationType.LEAVE_REQUEST_MANAGER_REJECTED,
-        'Leave Request Rejected by Manager',
-        `Your leave request (${lr.dateFrom} to ${lr.dateTo}) has been rejected by your manager.`,
-        employee.companyId,
-        { leaveRequestId: lr.id, employeeId: lr.employeeId },
-        lr.employeeId,
-      );
-
+      if (lr.employeeId) {
+        await this.notificationsService.create(
+          NotificationType.LEAVE_REQUEST_MANAGER_REJECTED,
+          'Leave Request Rejected by Manager',
+          `Your leave request (${lr.dateFrom} to ${lr.dateTo}) has been rejected by your Reporting Manager.`,
+          employee.companyId,
+          { leaveRequestId: lr.id, employeeId: lr.employeeId },
+          lr.employeeId,
+        );
+      }
       return this.findOneInternal(id, employee.companyId);
     }
 
-    // HR rejection
-    if (lr.status === LeaveRequestStatus.MANAGER_APPROVED && employee.isHr) {
+    // ── Level 2: HR rejection (override at any level) ──
+    if (employee.isHr && HR_ACTIONABLE.includes(lr.status)) {
       lr.status = LeaveRequestStatus.HR_REJECTED;
       lr.hrId = employee.id;
       lr.hrActionAt = new Date();
       lr.hrRemarks = dto.remarks ?? null;
       await this.leaveRequestRepo.save(lr);
 
-      // Notify employee
-      const hrRejectedEmp = await this.employeeRepo.findOne({ where: { id: lr.employeeId } });
-      await this.notificationsService.create(
-        NotificationType.LEAVE_REQUEST_HR_REJECTED,
-        'Leave Request Rejected by HR',
-        `Your leave request (${lr.dateFrom} to ${lr.dateTo}) has been rejected by HR.`,
-        employee.companyId,
-        { leaveRequestId: lr.id, employeeId: lr.employeeId },
-        lr.employeeId,
-      );
+      const rejectedEmp = lr.employeeId
+        ? await this.employeeRepo.findOne({ where: { id: lr.employeeId } })
+        : null;
 
-      // Notify manager
+      if (lr.employeeId) {
+        await this.notificationsService.create(
+          NotificationType.LEAVE_REQUEST_HR_REJECTED,
+          'Leave Request Rejected by HR',
+          `Your leave request (${lr.dateFrom} to ${lr.dateTo}) has been rejected by HR.`,
+          employee.companyId,
+          { leaveRequestId: lr.id, employeeId: lr.employeeId },
+          lr.employeeId,
+        );
+      }
       if (lr.managerId) {
         await this.notificationsService.create(
           NotificationType.LEAVE_REQUEST_HR_REJECTED,
           'Leave Request Rejected by HR',
-          `Leave request (${lr.dateFrom} to ${lr.dateTo}) for ${hrRejectedEmp?.empName} has been rejected by HR.`,
+          `Leave request (${lr.dateFrom} to ${lr.dateTo}) for ${rejectedEmp?.empName} has been rejected by HR.`,
           employee.companyId,
           { leaveRequestId: lr.id, employeeId: lr.employeeId },
           lr.managerId,
@@ -405,8 +457,8 @@ export class LeaveRequestsService {
   async adminCancel(id: number, companyId: number) {
     const lr = await this.findOneInternal(id, companyId);
 
-    if (![LeaveRequestStatus.PENDING, LeaveRequestStatus.MANAGER_APPROVED].includes(lr.status)) {
-      throw new BadRequestException('Only pending or manager-approved requests can be cancelled');
+    if (!CANCELLABLE.includes(lr.status)) {
+      throw new BadRequestException('Only pending or approved requests can be cancelled');
     }
 
     lr.status = LeaveRequestStatus.CANCELLED;
@@ -420,7 +472,6 @@ export class LeaveRequestsService {
     const lr = await this.findOneInternal(id, companyId);
 
     if (lr.status === LeaveRequestStatus.PENDING) {
-      // Admin acts as manager approval
       lr.status = LeaveRequestStatus.MANAGER_APPROVED;
       lr.managerActionAt = new Date();
       lr.managerRemarks = dto.remarks ?? null;
@@ -429,7 +480,6 @@ export class LeaveRequestsService {
     }
 
     if (lr.status === LeaveRequestStatus.MANAGER_APPROVED) {
-      // Admin acts as HR approval
       lr.status = LeaveRequestStatus.HR_APPROVED;
       lr.hrActionAt = new Date();
       lr.hrRemarks = dto.remarks ?? null;

@@ -301,6 +301,39 @@ export class EmployeeService {
     return { date, filledCount: filled, totalCount: total, fillRate: total > 0 ? Math.round((filled / total) * 100) : 0, rows };
   }
 
+  async getAllLastFilledReport(companyId: number) {
+    return this.dataSource.query(
+      `SELECT
+         e.id,
+         e.emp_code,
+         e.emp_name,
+         e.consultant_type,
+         p.project_name AS assigned_project,
+         latest.sheet_date   AS last_filled_date,
+         latest.total_hours  AS last_filled_hours,
+         latest.submitted_at AS last_submitted_at,
+         DATEDIFF(CURDATE(), latest.sheet_date) AS days_since_last_fill
+       FROM employees e
+       LEFT JOIN projects p ON p.id = e.assigned_project_id
+       LEFT JOIN (
+         SELECT dts.employee_id, dts.sheet_date, dts.total_hours, dts.submitted_at
+         FROM daily_task_sheets dts
+         INNER JOIN (
+           SELECT employee_id, MAX(sheet_date) AS max_date
+           FROM daily_task_sheets
+           WHERE is_submitted = 1
+           GROUP BY employee_id
+         ) latest_dates
+           ON dts.employee_id = latest_dates.employee_id
+           AND dts.sheet_date = latest_dates.max_date
+         WHERE dts.is_submitted = 1
+       ) latest ON latest.employee_id = e.id
+       WHERE e.is_active = 1 AND e.company_id = ?
+       ORDER BY days_since_last_fill DESC, e.emp_name ASC`,
+      [companyId],
+    );
+  }
+
   private getWeekStart(): string {
     const d = new Date();
     d.setDate(d.getDate() - d.getDay() + 1); // Monday

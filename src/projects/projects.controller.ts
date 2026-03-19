@@ -65,6 +65,12 @@ export class ProjectsController {
   getEmployees(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
     return this.projectsService.getEmployees(id, companyId);
   }
+
+  @Get('managers/list')
+  @ApiOperation({ summary: 'List company admins available as project managers' })
+  getManagers(@TenantId() companyId: number) {
+    return this.projectsService.getManagers(companyId);
+  }
 }
 
 // ── Employee read-only endpoints: /api/employee/projects ──────────────────
@@ -77,11 +83,15 @@ export class EmployeeProjectsController {
   constructor(private readonly projectsService: ProjectsService) {}
 
   @Get()
-  @ApiOperation({ summary: 'List projects where employee has assigned tickets' })
+  @ApiOperation({ summary: 'List projects (all for HR, own-ticket projects for others)' })
   findAll(
     @TenantId() companyId: number,
     @CurrentUser('id') employeeId: number,
+    @CurrentUser('isHr') isHr: boolean,
   ) {
+    if (isHr) {
+      return this.projectsService.findAll(companyId, { limit: 500 } as any);
+    }
     return this.projectsService.findByEmployeeTickets(companyId, employeeId);
   }
 

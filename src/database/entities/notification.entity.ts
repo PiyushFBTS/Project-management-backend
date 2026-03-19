@@ -25,6 +25,9 @@ export enum NotificationType {
   TASK_ASSIGNED                  = 'task_assigned',
   TASK_STATUS_CHANGED            = 'task_status_changed',
   TASK_COMMENTED                 = 'task_commented',
+  TASK_MENTION                   = 'task_mention',
+  BIRTHDAY                       = 'birthday',
+  WORK_ANNIVERSARY               = 'work_anniversary',
 }
 
 @Entity('notifications')

@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Project, ProjectStatus } from '../database/entities/project.entity';
 import { Employee } from '../database/entities/employee.entity';
+import { AdminUser } from '../database/entities/admin-user.entity';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { FilterProjectDto } from './dto/filter-project.dto';
@@ -20,6 +21,7 @@ export class ProjectsService {
   constructor(
     @InjectRepository(Project) private readonly projectRepo: Repository<Project>,
     @InjectRepository(Employee) private readonly employeeRepo: Repository<Employee>,
+    @InjectRepository(AdminUser) private readonly adminRepo: Repository<AdminUser>,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -30,6 +32,8 @@ export class ProjectsService {
       .createQueryBuilder('p')
       .leftJoin('p.createdBy', 'admin')
       .addSelect(['admin.id', 'admin.name', 'admin.email'])
+      .leftJoin('p.projectManager', 'pm')
+      .addSelect(['pm.id', 'pm.empName', 'pm.empCode'])
       .where('p.companyId = :companyId', { companyId })
       .skip((page - 1) * limit)
       .take(limit)
@@ -44,7 +48,7 @@ export class ProjectsService {
   }
 
   async findOne(id: number, companyId: number): Promise<Project> {
-    const project = await this.projectRepo.findOne({ where: { id, companyId }, relations: ['createdBy'] });
+    const project = await this.projectRepo.findOne({ where: { id, companyId }, relations: ['createdBy', 'projectManager'] });
     if (!project) throw new NotFoundException(`Project #${id} not found`);
     return project;
   }
@@ -75,6 +79,11 @@ export class ProjectsService {
 
     const prevStatus = project.status;
     Object.assign(project, dto);
+    // Clear the stale loaded relation so TypeORM uses the updated FK value
+    // (otherwise TypeORM overwrites projectManagerId with the old relation's id)
+    if ('projectManagerId' in dto) {
+      project.projectManager = null as any;
+    }
     const saved = await this.projectRepo.save(project);
 
     if (dto.status && dto.status !== prevStatus) {
@@ -115,6 +124,14 @@ export class ProjectsService {
     return this.employeeRepo.find({
       where: { assignedProjectId: id, isActive: true, companyId },
       select: ['id', 'empCode', 'empName', 'consultantType', 'email', 'mobileNumber'],
+    });
+  }
+
+  async getManagers(companyId: number) {
+    return this.employeeRepo.find({
+      where: { companyId, isActive: true },
+      select: ['id', 'empName', 'empCode'],
+      order: { empName: 'ASC' },
     });
   }
 }

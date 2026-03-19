@@ -47,9 +47,15 @@ export class LeaveRequestsEmployeeController {
   }
 
   @Get('pending-approvals')
-  @ApiOperation({ summary: 'Requests pending my action (as manager or HR)' })
+  @ApiOperation({ summary: 'Requests pending my action (as PM, manager or HR)' })
   pendingApprovals(@CurrentUser() employee: Employee, @Query() filter: FilterLeaveRequestDto) {
     return this.service.findPendingApprovals(employee, filter);
+  }
+
+  @Get('team')
+  @ApiOperation({ summary: 'Team leave requests (visible to PM, RM, and HR)' })
+  teamLeaves(@CurrentUser() employee: Employee, @Query() filter: FilterLeaveRequestDto) {
+    return this.service.findTeamLeaves(employee, filter);
   }
 
   @Get(':id')

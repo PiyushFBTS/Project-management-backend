@@ -118,4 +118,14 @@ export class EmployeeController {
     if (!employee.isHr) throw new ForbiddenException('Only HR employees can access this report');
     return this.employeeService.getAllDailyFillReport(companyId, date);
   }
+
+  @Get('reports/last-filled')
+  @ApiOperation({ summary: 'Last filled task sheet report (HR only)' })
+  getLastFilledReport(
+    @CurrentUser() employee: Employee,
+    @TenantId() companyId: number,
+  ) {
+    if (!employee.isHr) throw new ForbiddenException('Only HR employees can access this report');
+    return this.employeeService.getAllLastFilledReport(companyId);
+  }
 }

@@ -71,6 +71,12 @@ export class Employee {
   @Column({ name: 'is_hr', default: false })
   isHr: boolean;
 
+  @Column({ name: 'date_of_birth', type: 'date', nullable: true })
+  dateOfBirth: string | null;
+
+  @Column({ name: 'joining_date', type: 'date', nullable: true })
+  joiningDate: string | null;
+
   @Index('idx_employee_company')
   @Column({ name: 'company_id' })
   companyId: number;

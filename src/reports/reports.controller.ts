@@ -72,6 +72,14 @@ export class ReportsController {
     return this.reportsService.getDailyFillReport(companyId, date);
   }
 
+  // ── Last filled report ────────────────────────────────────────────────────
+
+  @Get('last-filled')
+  @ApiOperation({ summary: 'Last submitted task sheet date per employee' })
+  getLastFilled(@TenantId() companyId: number) {
+    return this.reportsService.getLastFilledReport(companyId);
+  }
+
   // ── Exports ────────────────────────────────────────────────────────────────
 
   @Get('export/employee-wise')

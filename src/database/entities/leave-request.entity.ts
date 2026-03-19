@@ -66,6 +66,8 @@ export class LeaveRequest {
   @Column({ type: 'enum', enum: LeaveRequestStatus, default: LeaveRequestStatus.PENDING })
   status: LeaveRequestStatus;
 
+  // ── Reporting Manager (Level 1) ───────────────────────────────────────
+
   @Column({ name: 'manager_id', nullable: true })
   managerId: number | null;
 
@@ -78,6 +80,8 @@ export class LeaveRequest {
 
   @Column({ name: 'manager_remarks', type: 'text', nullable: true })
   managerRemarks: string | null;
+
+  // ── HR (Level 2) ───────────────────────────────────────────────────────
 
   @Column({ name: 'hr_id', nullable: true })
   hrId: number | null;

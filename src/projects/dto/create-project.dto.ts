@@ -1,10 +1,13 @@
 import {
   IsEnum,
+  IsInt,
   IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
+import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { ProjectStatus, ProjectType } from '../../database/entities/project.entity';
 
@@ -50,4 +53,11 @@ export class CreateProjectDto {
   @IsString()
   @IsOptional()
   description?: string;
+
+  @ApiPropertyOptional({ description: 'Employee ID of the project manager, or null to clear' })
+  @ValidateIf((o) => o.projectManagerId !== null)
+  @IsInt()
+  @IsOptional()
+  @Type(() => Number)
+  projectManagerId?: number | null;
 }

@@ -35,6 +35,12 @@ export class AdminUser {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  @Column({ name: 'date_of_birth', type: 'date', nullable: true })
+  dateOfBirth: string | null;
+
+  @Column({ name: 'joining_date', type: 'date', nullable: true })
+  joiningDate: string | null;
+
   @Index('idx_admin_company')
   @Column({ name: 'company_id', nullable: true })
   companyId: number | null;

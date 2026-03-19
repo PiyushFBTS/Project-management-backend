@@ -55,4 +55,14 @@ export class CreateEmployeeDto {
   @ApiPropertyOptional({ description: 'Whether this employee is HR' })
   @IsOptional()
   isHr?: boolean;
+
+  @ApiPropertyOptional({ example: '1995-06-15', description: 'Date of birth (YYYY-MM-DD)' })
+  @IsString()
+  @IsOptional()
+  dateOfBirth?: string;
+
+  @ApiPropertyOptional({ example: '2022-01-10', description: 'Date of joining (YYYY-MM-DD)' })
+  @IsString()
+  @IsOptional()
+  joiningDate?: string;
 }

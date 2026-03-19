@@ -28,6 +28,16 @@ export class DailyTaskSheetsController {
     return this.service.getTodaySheet(employeeId, companyId);
   }
 
+  @Get('by-date')
+  @ApiOperation({ summary: 'Get or auto-create a task sheet for a specific date' })
+  getByDate(
+    @CurrentUser('id') employeeId: number,
+    @TenantId() companyId: number,
+    @Query('date') date: string,
+  ) {
+    return this.service.getSheetByDate(employeeId, companyId, date);
+  }
+
   @Get('history')
   @ApiOperation({ summary: 'List past task sheet submissions (paginated)' })
   getHistory(@CurrentUser('id') employeeId: number, @Query() filter: FilterSheetDto) {

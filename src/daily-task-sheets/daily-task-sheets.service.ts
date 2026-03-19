@@ -43,6 +43,20 @@ export class DailyTaskSheetsService {
     return sheet;
   }
 
+  async getSheetByDate(employeeId: number, companyId: number, date: string): Promise<DailyTaskSheet> {
+    let sheet = await this.sheetRepo.findOne({
+      where: { employeeId, sheetDate: date },
+      relations: ['taskEntries', 'taskEntries.project', 'taskEntries.taskType'],
+    });
+    if (!sheet) {
+      sheet = await this.sheetRepo.save(
+        this.sheetRepo.create({ employeeId, sheetDate: date, companyId }),
+      );
+      sheet.taskEntries = [];
+    }
+    return sheet;
+  }
+
   async getHistory(employeeId: number, filter: FilterSheetDto) {
     const { page = 1, limit = 20, fromDate, toDate } = filter;
 
@@ -186,12 +200,14 @@ export class DailyTaskSheetsService {
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
-  /** Allow edits on today's sheet even if submitted; block past submitted sheets. */
+  /** Allow edits on sheets from today and the previous 2 days; block older sheets. */
   private assertEditable(sheet: DailyTaskSheet) {
-    if (!sheet.isSubmitted) return;
-    const today = new Date().toISOString().split('T')[0];
-    if (sheet.sheetDate !== today) {
-      throw new ForbiddenException('Cannot modify a submitted task sheet from a previous date');
+    const sheetDate = new Date(sheet.sheetDate);
+    const cutoff = new Date();
+    cutoff.setDate(cutoff.getDate() - 2);
+    cutoff.setHours(0, 0, 0, 0);
+    if (sheetDate < cutoff) {
+      throw new ForbiddenException('Cannot modify a task sheet older than 2 days');
     }
   }
 

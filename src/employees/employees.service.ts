@@ -9,6 +9,7 @@ import { Company } from '../database/entities/company.entity';
 import { AdminUser } from '../database/entities/admin-user.entity';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
+import { UpdateEmployeeSelfDto } from './dto/update-employee-self.dto';
 import { FilterEmployeeDto } from './dto/filter-employee.dto';
 import { AssignProjectDto } from './dto/assign-project.dto';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -132,6 +133,15 @@ export class EmployeesService {
     return this.employeeRepo.save(employee);
   }
 
+  async updateSelf(employeeId: number, companyId: number, dto: UpdateEmployeeSelfDto): Promise<Employee> {
+    const employee = await this.employeeRepo.findOne({ where: { id: employeeId, companyId } });
+    if (!employee) throw new NotFoundException('Employee not found');
+    if (dto.empName !== undefined) employee.empName = dto.empName;
+    if (dto.mobileNumber !== undefined) employee.mobileNumber = dto.mobileNumber;
+    if (dto.dateOfBirth !== undefined) employee.dateOfBirth = dto.dateOfBirth;
+    return this.employeeRepo.save(employee);
+  }
+
   async remove(id: number, companyId: number) {
     const employee = await this.findOne(id, companyId);
     employee.isActive = false;
@@ -153,6 +163,129 @@ export class EmployeesService {
     employee.assignedProjectId = dto.projectId ?? null;
     await this.employeeRepo.save(employee);
     return { message: `Employee #${id} project assignment updated` };
+  }
+
+  async getUpcomingEvents(companyId: number, days = 30) {
+    const today = new Date();
+    const events: {
+      id: number; name: string; type: 'birthday' | 'anniversary';
+      date: string; daysUntil: number; _type: 'employee' | 'admin';
+    }[] = [];
+
+    const employees = await this.employeeRepo.find({
+      where: { companyId, isActive: true },
+      select: ['id', 'empName', 'dateOfBirth', 'joiningDate'],
+    });
+    const admins = await this.adminRepo.find({
+      where: { companyId, isActive: true },
+      select: ['id', 'name', 'dateOfBirth', 'joiningDate'],
+    });
+
+    const calcDaysUntil = (dateStr: string): number => {
+      const d = new Date(dateStr);
+      const next = new Date(today.getFullYear(), d.getMonth(), d.getDate());
+      if (next < today) next.setFullYear(today.getFullYear() + 1);
+      return Math.round((next.getTime() - today.getTime()) / 86400000);
+    };
+
+    for (const emp of employees) {
+      if (emp.dateOfBirth) {
+        const du = calcDaysUntil(emp.dateOfBirth);
+        if (du <= days) events.push({ id: emp.id, name: emp.empName, type: 'birthday', date: emp.dateOfBirth, daysUntil: du, _type: 'employee' });
+      }
+      if (emp.joiningDate) {
+        const du = calcDaysUntil(emp.joiningDate);
+        if (du <= days) events.push({ id: emp.id, name: emp.empName, type: 'anniversary', date: emp.joiningDate, daysUntil: du, _type: 'employee' });
+      }
+    }
+    for (const admin of admins) {
+      if (admin.dateOfBirth) {
+        const du = calcDaysUntil(admin.dateOfBirth);
+        if (du <= days) events.push({ id: admin.id, name: admin.name, type: 'birthday', date: admin.dateOfBirth, daysUntil: du, _type: 'admin' });
+      }
+      if (admin.joiningDate) {
+        const du = calcDaysUntil(admin.joiningDate);
+        if (du <= days) events.push({ id: admin.id, name: admin.name, type: 'anniversary', date: admin.joiningDate, daysUntil: du, _type: 'admin' });
+      }
+    }
+
+    events.sort((a, b) => a.daysUntil - b.daysUntil);
+    return events;
+  }
+
+  async getTodayEvents(companyId: number) {
+    const today = new Date();
+    const mm = String(today.getMonth() + 1).padStart(2, '0');
+    const dd = String(today.getDate()).padStart(2, '0');
+    const todayMD = `${mm}-${dd}`;
+
+    type TodayEvent = {
+      id: number; name: string; empCode?: string; email: string;
+      phone?: string; type: 'birthday' | 'anniversary'; _type: 'employee' | 'admin';
+      dateOfBirth?: string | null; joiningDate?: string | null;
+      reportsTo?: { id: number; name: string } | null;
+    };
+    const events: TodayEvent[] = [];
+
+    const employees = await this.employeeRepo
+      .createQueryBuilder('e')
+      .leftJoin('e.reportsTo', 'rt')
+      .addSelect(['rt.id', 'rt.empName'])
+      .where('e.companyId = :cid', { cid: companyId })
+      .andWhere('e.isActive = true')
+      .select([
+        'e.id', 'e.empName', 'e.empCode', 'e.email', 'e.mobileNumber',
+        'e.dateOfBirth', 'e.joiningDate',
+      ])
+      .getMany();
+
+    for (const emp of employees) {
+      if (emp.dateOfBirth && emp.dateOfBirth.slice(5) === todayMD) {
+        events.push({
+          id: emp.id, name: emp.empName, empCode: emp.empCode, email: emp.email,
+          phone: emp.mobileNumber, type: 'birthday', _type: 'employee',
+          dateOfBirth: emp.dateOfBirth, joiningDate: emp.joiningDate,
+          reportsTo: (emp as any).reportsTo
+            ? { id: (emp as any).reportsTo.id, name: (emp as any).reportsTo.empName }
+            : null,
+        });
+      }
+      if (emp.joiningDate && emp.joiningDate.slice(5) === todayMD) {
+        events.push({
+          id: emp.id, name: emp.empName, empCode: emp.empCode, email: emp.email,
+          phone: emp.mobileNumber, type: 'anniversary', _type: 'employee',
+          dateOfBirth: emp.dateOfBirth, joiningDate: emp.joiningDate,
+          reportsTo: (emp as any).reportsTo
+            ? { id: (emp as any).reportsTo.id, name: (emp as any).reportsTo.empName }
+            : null,
+        });
+      }
+    }
+
+    const admins = await this.adminRepo.find({
+      where: { companyId, isActive: true },
+      select: ['id', 'name', 'email', 'dateOfBirth', 'joiningDate'],
+    });
+    for (const admin of admins) {
+      if (admin.dateOfBirth && admin.dateOfBirth.slice(5) === todayMD) {
+        events.push({
+          id: admin.id, name: admin.name, email: admin.email,
+          type: 'birthday', _type: 'admin',
+          dateOfBirth: admin.dateOfBirth, joiningDate: admin.joiningDate,
+          reportsTo: null,
+        });
+      }
+      if (admin.joiningDate && admin.joiningDate.slice(5) === todayMD) {
+        events.push({
+          id: admin.id, name: admin.name, email: admin.email,
+          type: 'anniversary', _type: 'admin',
+          dateOfBirth: admin.dateOfBirth, joiningDate: admin.joiningDate,
+          reportsTo: null,
+        });
+      }
+    }
+
+    return events;
   }
 
   private async validateUserLimit(companyId: number): Promise<void> {

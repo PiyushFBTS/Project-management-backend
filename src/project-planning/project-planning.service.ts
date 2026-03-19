@@ -95,41 +95,22 @@ export class ProjectPlanningService {
     return task;
   }
 
-  /** Assign ticket to admin and notify when closed */
-  private async assignToAdminOnClose(task: ProjectTask, companyId: number, assignToAdminId?: number) {
-    if (assignToAdminId) {
-      // Assign the ticket to the selected admin and remove employee assignee
-      task.assignedAdminId = assignToAdminId;
-      task.assigneeId = null;
-      task.assignee = null;
-      await this.taskRepo.save(task);
+  /** Unassign ticket and notify when closed */
+  private async onTicketClosed(task: ProjectTask, companyId: number) {
+    // Unassign — closed tickets belong to no one
+    task.assigneeId = null;
+    task.assignee = null;
+    task.assignedAdminId = null;
+    task.assignedAdmin = null;
+    await this.taskRepo.save(task);
 
-      const admin = await this.adminRepo.findOne({ where: { id: assignToAdminId }, select: ['id', 'name'] });
-
-      // Record assignment to admin in history
-      await this.recordHistory(
-        task.id, companyId, TaskHistoryAction.ASSIGNED,
-        assignToAdminId, 'admin', admin?.name ?? 'Admin',
-        null, admin?.name ?? 'Admin',
-        `Ticket closed and assigned to admin ${admin?.name ?? 'Admin'}`,
-      );
-      await this.notificationsService.create(
-        NotificationType.TASK_STATUS_CHANGED,
-        'Ticket Closed & Assigned to You',
-        `Ticket ${task.ticketNumber} "${task.title}" has been closed and assigned to you.`,
-        companyId,
-        { taskId: task.id, projectId: task.projectId, assignedToAdminId: assignToAdminId, assignedToAdminName: admin?.name },
-      );
-    } else {
-      // Fallback: notify all admins without specific assignment
-      await this.notificationsService.create(
-        NotificationType.TASK_STATUS_CHANGED,
-        'Ticket Closed',
-        `Ticket ${task.ticketNumber} "${task.title}" has been closed.`,
-        companyId,
-        { taskId: task.id, projectId: task.projectId },
-      );
-    }
+    await this.notificationsService.create(
+      NotificationType.TASK_STATUS_CHANGED,
+      'Ticket Closed',
+      `Ticket ${task.ticketNumber} "${task.title}" has been closed.`,
+      companyId,
+      { taskId: task.id, projectId: task.projectId },
+    );
   }
 
   /** Get list of company admins for ticket assignment on close */
@@ -317,7 +298,7 @@ export class ProjectPlanningService {
 
     // Sort comments by date and resolve author names
     if (task.comments?.length) {
-      task.comments.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      task.comments.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       // Batch-fetch employee and admin names
       const empIds = [...new Set(task.comments.filter((c) => c.authorType === AuthorType.EMPLOYEE).map((c) => c.authorId))];
@@ -414,7 +395,7 @@ export class ProjectPlanningService {
 
     // Notify admins when ticket is closed
     if (dto.status === 'closed' && prevStatus !== 'closed') {
-      await this.assignToAdminOnClose(saved, companyId);
+      await this.onTicketClosed(saved, companyId);
     }
 
     return saved;
@@ -483,6 +464,26 @@ export class ProjectPlanningService {
       );
     }
 
+    // Notify @mentioned employees
+    const mentionRegex = /@\[([^\]]+)\]\((\d+)\)/g;
+    let match: RegExpExecArray | null;
+    const notifiedIds = new Set<number>();
+    while ((match = mentionRegex.exec(dto.content)) !== null) {
+      const mentionedId = parseInt(match[2], 10);
+      // Don't double-notify the commenter themselves or someone already notified
+      if (mentionedId === authorId && authorType === AuthorType.EMPLOYEE) continue;
+      if (notifiedIds.has(mentionedId)) continue;
+      notifiedIds.add(mentionedId);
+      await this.notificationsService.create(
+        NotificationType.TASK_MENTION,
+        'You were mentioned in a comment',
+        `${authorName} mentioned you in a comment on "${task.title}".`,
+        companyId,
+        { taskId, projectId: task.projectId, commentId: saved.id },
+        mentionedId,
+      );
+    }
+
     return saved;
   }
 
@@ -536,7 +537,7 @@ export class ProjectPlanningService {
       .take(limit)
       .orderBy(`t.${sort === 'sortOrder' ? 'sortOrder' : 'createdAt'}`, order.toUpperCase() as 'ASC' | 'DESC');
 
-    if (search) qb.andWhere('t.ticket_number LIKE :s', { s: `%${search}` });
+    if (search) qb.andWhere('(t.ticket_number LIKE :s OR t.title LIKE :s)', { s: `%${search}%` });
     if (status) qb.andWhere('t.status = :status', { status });
     if (priority) qb.andWhere('t.priority = :priority', { priority });
     if (projectId) qb.andWhere('t.project_id = :projectId', { projectId });
@@ -576,7 +577,7 @@ export class ProjectPlanningService {
 
     // Notify admins when ticket is closed
     if (dto.status === 'closed' && prevStatus !== 'closed') {
-      await this.assignToAdminOnClose(saved, companyId, dto.assignToAdminId);
+      await this.onTicketClosed(saved, companyId);
     }
 
     return saved;
@@ -643,7 +644,7 @@ export class ProjectPlanningService {
       .take(limit)
       .orderBy(`t.${sort === 'sortOrder' ? 'sortOrder' : 'createdAt'}`, order.toUpperCase() as 'ASC' | 'DESC');
 
-    if (search) qb.andWhere('t.ticket_number LIKE :s', { s: `%${search}%` });
+    if (search) qb.andWhere('(t.ticket_number LIKE :s OR t.title LIKE :s)', { s: `%${search}%` });
     if (status) qb.andWhere('t.status = :status', { status });
     if (priority) qb.andWhere('t.priority = :priority', { priority });
     if (projectId) qb.andWhere('t.project_id = :projectId', { projectId });
@@ -694,7 +695,7 @@ export class ProjectPlanningService {
 
     // Notify admins when ticket is closed
     if (dto.status === 'closed' && prevStatus !== 'closed') {
-      await this.assignToAdminOnClose(saved, companyId, dto.assignToAdminId);
+      await this.onTicketClosed(saved, companyId);
     }
 
     return saved;
@@ -865,7 +866,7 @@ export class ProjectPlanningService {
       qb.andWhere('t.project_id IN (:...projectIds)', { projectIds });
     }
 
-    if (search) qb.andWhere('t.ticket_number LIKE :s', { s: `%${search}%` });
+    if (search) qb.andWhere('(t.ticket_number LIKE :s OR t.title LIKE :s)', { s: `%${search}%` });
     if (status) qb.andWhere('t.status = :status', { status });
     if (priority) qb.andWhere('t.priority = :priority', { priority });
     if (projectId) qb.andWhere('t.project_id = :projectId', { projectId });
@@ -913,7 +914,7 @@ export class ProjectPlanningService {
 
     // Notify admins when ticket is closed
     if (dto.status === 'closed' && prevStatus !== 'closed') {
-      await this.assignToAdminOnClose(saved, companyId, dto.assignToAdminId);
+      await this.onTicketClosed(saved, companyId);
     }
 
     return saved;
@@ -1026,7 +1027,7 @@ export class ProjectPlanningService {
 
     // Sort comments and resolve author names
     if (task.comments?.length) {
-      task.comments.sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+      task.comments.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
       const empIds = [...new Set(task.comments.filter((c) => c.authorType === AuthorType.EMPLOYEE).map((c) => c.authorId))];
       const adminIds = [...new Set(task.comments.filter((c) => c.authorType === AuthorType.ADMIN).map((c) => c.authorId))];

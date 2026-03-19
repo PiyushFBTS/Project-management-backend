@@ -64,6 +64,13 @@ export class Project {
   @Column({ type: 'text', nullable: true })
   description: string;
 
+  @Column({ name: 'project_manager_id', nullable: true })
+  projectManagerId: number;
+
+  @ManyToOne(() => Employee, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'project_manager_id' })
+  projectManager: Employee;
+
   @Column({ name: 'created_by', nullable: true })
   createdById: number;
 
