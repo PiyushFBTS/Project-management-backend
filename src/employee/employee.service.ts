@@ -218,8 +218,15 @@ export class EmployeeService {
          p.project_name AS assigned_project,
          COUNT(DISTINCT dts.sheet_date)            AS days_filled,
          COALESCE(SUM(dts.total_hours), 0)         AS total_hours,
-         ROUND(COALESCE(SUM(dts.man_days), 0), 2)  AS total_man_days,
-         ROUND(COALESCE(AVG(NULLIF(dts.total_hours,0)), 0), 2) AS avg_hours_per_day
+         ROUND(COALESCE(AVG(NULLIF(dts.total_hours,0)), 0), 2) AS avg_hours_per_day,
+         ROUND(COALESCE((
+           SELECT SUM(1.0 / tc_count.cnt)
+           FROM ticket_contributors tc_emp
+           INNER JOIN (
+             SELECT task_id, COUNT(*) AS cnt FROM ticket_contributors GROUP BY task_id
+           ) tc_count ON tc_count.task_id = tc_emp.task_id
+           WHERE tc_emp.employee_id = e.id
+         ), 0), 2) AS ticket_count
        FROM employees e
        LEFT JOIN projects p ON p.id = e.assigned_project_id
        LEFT JOIN daily_task_sheets dts
@@ -245,8 +252,15 @@ export class EmployeeService {
          p.project_name AS assigned_project,
          COUNT(DISTINCT dts.sheet_date)            AS days_filled,
          COALESCE(SUM(dts.total_hours), 0)         AS total_hours,
-         ROUND(COALESCE(SUM(dts.man_days), 0), 2)  AS total_man_days,
-         ROUND(COALESCE(AVG(NULLIF(dts.total_hours,0)), 0), 2) AS avg_hours_per_day
+         ROUND(COALESCE(AVG(NULLIF(dts.total_hours,0)), 0), 2) AS avg_hours_per_day,
+         ROUND(COALESCE((
+           SELECT SUM(1.0 / tc_count.cnt)
+           FROM ticket_contributors tc_emp
+           INNER JOIN (
+             SELECT task_id, COUNT(*) AS cnt FROM ticket_contributors GROUP BY task_id
+           ) tc_count ON tc_count.task_id = tc_emp.task_id
+           WHERE tc_emp.employee_id = e.id
+         ), 0), 2) AS ticket_count
        FROM employees e
        LEFT JOIN projects p ON p.id = e.assigned_project_id
        LEFT JOIN daily_task_sheets dts

@@ -102,4 +102,32 @@ export class ProjectPlanningTicketsController {
   ) {
     return this.service.addComment(taskId, companyId, employeeId, AuthorType.EMPLOYEE, dto);
   }
+
+  @Get(':taskId/contributors/suggested')
+  @ApiOperation({ summary: 'Get suggested contributors from ticket history' })
+  getSuggestedContributors(
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @TenantId() companyId: number,
+  ) {
+    return this.service.getSuggestedContributors(taskId, companyId);
+  }
+
+  @Get(':taskId/contributors')
+  @ApiOperation({ summary: 'Get ticket contributors' })
+  getContributors(
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @TenantId() companyId: number,
+  ) {
+    return this.service.getContributors(taskId, companyId);
+  }
+
+  @Post(':taskId/contributors')
+  @ApiOperation({ summary: 'Set ticket contributors (replaces existing)' })
+  setContributors(
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @TenantId() companyId: number,
+    @Body() body: { employeeIds: number[] },
+  ) {
+    return this.service.setContributors(taskId, companyId, body.employeeIds);
+  }
 }

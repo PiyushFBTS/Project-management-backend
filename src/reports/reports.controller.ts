@@ -72,6 +72,17 @@ export class ReportsController {
     return this.reportsService.getDailyFillReport(companyId, date);
   }
 
+  // ── Employee contributed tickets ──────────────────────────────────────────
+
+  @Get('employee/:id/tickets')
+  @ApiOperation({ summary: 'Tickets where an employee is a contributor' })
+  getEmployeeTickets(
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.reportsService.getEmployeeContributedTickets(companyId, id);
+  }
+
   // ── Last filled report ────────────────────────────────────────────────────
 
   @Get('last-filled')

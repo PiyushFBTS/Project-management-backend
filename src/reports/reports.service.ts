@@ -22,8 +22,15 @@ export class ReportsService {
          p.project_name AS assigned_project,
          COUNT(DISTINCT dts.sheet_date)            AS days_filled,
          COALESCE(SUM(dts.total_hours), 0)         AS total_hours,
-         ROUND(COALESCE(SUM(dts.man_days), 0), 2)  AS total_man_days,
-         ROUND(COALESCE(AVG(NULLIF(dts.total_hours,0)), 0), 2) AS avg_hours_per_day
+         ROUND(COALESCE(AVG(NULLIF(dts.total_hours,0)), 0), 2) AS avg_hours_per_day,
+         ROUND(COALESCE((
+           SELECT SUM(1.0 / tc_count.cnt)
+           FROM ticket_contributors tc_emp
+           INNER JOIN (
+             SELECT task_id, COUNT(*) AS cnt FROM ticket_contributors GROUP BY task_id
+           ) tc_count ON tc_count.task_id = tc_emp.task_id
+           WHERE tc_emp.employee_id = e.id
+         ), 0), 2) AS ticket_count
        FROM employees e
        LEFT JOIN projects p ON p.id = e.assigned_project_id
        LEFT JOIN daily_task_sheets dts
@@ -108,6 +115,28 @@ export class ReportsService {
     return { date, filledCount: filled, totalCount: total, fillRate: total > 0 ? Math.round((filled / total) * 100) : 0, rows };
   }
 
+  // ── Employee contributed tickets ──────────────────────────────────────────
+
+  async getEmployeeContributedTickets(companyId: number, employeeId: number) {
+    return this.dataSource.query(
+      `SELECT
+         pt.id,
+         pt.ticket_number,
+         pt.title,
+         pt.status,
+         pt.priority,
+         p.project_name,
+         (SELECT COUNT(*) FROM ticket_contributors tc2 WHERE tc2.task_id = tc.task_id) AS contributor_count,
+         ROUND(1.0 / (SELECT COUNT(*) FROM ticket_contributors tc2 WHERE tc2.task_id = tc.task_id), 2) AS weighted_share
+       FROM ticket_contributors tc
+       INNER JOIN project_tasks pt ON pt.id = tc.task_id
+       LEFT JOIN projects p ON p.id = pt.project_id
+       WHERE tc.employee_id = ? AND tc.company_id = ?
+       ORDER BY pt.id DESC`,
+      [employeeId, companyId],
+    );
+  }
+
   // ── Last filled report ────────────────────────────────────────────────────
 
   async getLastFilledReport(companyId: number) {
@@ -158,8 +187,8 @@ export class ReportsService {
       { header: 'Project',         key: 'assigned_project',width: 25 },
       { header: 'Days Filled',     key: 'days_filled',     width: 12 },
       { header: 'Total Hours',     key: 'total_hours',     width: 12 },
-      { header: 'Total Man-Days',  key: 'total_man_days',  width: 14 },
       { header: 'Avg Hrs/Day',     key: 'avg_hours_per_day', width: 12 },
+      { header: 'Ticket Count',    key: 'ticket_count',    width: 14 },
     ];
 
     ws.getRow(1).font = { bold: true };

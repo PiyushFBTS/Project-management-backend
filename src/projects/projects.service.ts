@@ -5,9 +5,12 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import * as fs from 'fs';
+import { join } from 'path';
 import { Project, ProjectStatus } from '../database/entities/project.entity';
 import { Employee } from '../database/entities/employee.entity';
 import { AdminUser } from '../database/entities/admin-user.entity';
+import { ProjectDocument, DocumentCategory } from '../database/entities/project-document.entity';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { FilterProjectDto } from './dto/filter-project.dto';
@@ -22,6 +25,7 @@ export class ProjectsService {
     @InjectRepository(Project) private readonly projectRepo: Repository<Project>,
     @InjectRepository(Employee) private readonly employeeRepo: Repository<Employee>,
     @InjectRepository(AdminUser) private readonly adminRepo: Repository<AdminUser>,
+    @InjectRepository(ProjectDocument) private readonly docRepo: Repository<ProjectDocument>,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -133,5 +137,58 @@ export class ProjectsService {
       select: ['id', 'empName', 'empCode'],
       order: { empName: 'ASC' },
     });
+  }
+
+  // ── Documents ──────────────────────────────────────────────────────────────
+
+  async getDocuments(projectId: number, companyId: number) {
+    return this.docRepo.find({
+      where: { projectId, companyId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async uploadDocument(
+    projectId: number,
+    companyId: number,
+    file: Express.Multer.File,
+    uploadedByName: string,
+    category?: string,
+  ) {
+    const project = await this.projectRepo.findOne({ where: { id: projectId, companyId } });
+    if (!project) throw new NotFoundException('Project not found');
+
+    const validCategories = Object.values(DocumentCategory);
+    const cat = validCategories.includes(category as DocumentCategory)
+      ? (category as DocumentCategory)
+      : DocumentCategory.OTHER;
+
+    const doc = this.docRepo.create({
+      projectId,
+      companyId,
+      fileName: file.filename,
+      originalName: file.originalname,
+      filePath: `/uploads/project-documents/${file.filename}`,
+      fileSize: file.size,
+      mimeType: file.mimetype,
+      category: cat,
+      uploadedByName,
+    });
+
+    return this.docRepo.save(doc);
+  }
+
+  async deleteDocument(projectId: number, docId: number, companyId: number) {
+    const doc = await this.docRepo.findOne({ where: { id: docId, projectId, companyId } });
+    if (!doc) throw new NotFoundException('Document not found');
+
+    // Delete file from disk
+    try {
+      const filePath = join(process.cwd(), 'uploads', 'project-documents', doc.fileName);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch { /* ignore file deletion errors */ }
+
+    await this.docRepo.remove(doc);
+    return { message: 'Document deleted' };
   }
 }

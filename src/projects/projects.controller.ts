@@ -10,9 +10,14 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ProjectsService } from './projects.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
@@ -21,6 +26,22 @@ import { JwtAdminGuard } from '../auth/guards/jwt-admin.guard';
 import { JwtEmployeeGuard } from '../auth/guards/jwt-employee.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { TenantId } from '../common/decorators/tenant-id.decorator';
+
+const documentStorage = diskStorage({
+  destination: './uploads/project-documents',
+  filename: (_req, file, cb) => {
+    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
+    cb(null, `doc-${uniqueSuffix}${extname(file.originalname)}`);
+  },
+});
+
+const documentFileFilter = (_req: any, file: any, cb: any) => {
+  if (/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|jpg|jpeg|png|gif|webp|txt|csv)$/i.test(file.originalname)) {
+    cb(null, true);
+  } else {
+    cb(new Error('File type not allowed'), false);
+  }
+};
 
 @ApiTags('Projects')
 @ApiBearerAuth('admin-jwt')
@@ -71,6 +92,44 @@ export class ProjectsController {
   getManagers(@TenantId() companyId: number) {
     return this.projectsService.getManagers(companyId);
   }
+
+  // ── Documents ──
+  @Get(':id/documents')
+  @ApiOperation({ summary: 'List project documents' })
+  getDocuments(@Param('id', ParseIntPipe) id: number, @TenantId() companyId: number) {
+    return this.projectsService.getDocuments(id, companyId);
+  }
+
+  @Post(':id/documents')
+  @ApiOperation({ summary: 'Upload a project document' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: documentStorage,
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10 MB
+      fileFilter: documentFileFilter,
+    }),
+  )
+  uploadDocument(
+    @Param('id', ParseIntPipe) id: number,
+    @TenantId() companyId: number,
+    @CurrentUser('name') adminName: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('category') category?: string,
+  ) {
+    return this.projectsService.uploadDocument(id, companyId, file, adminName ?? 'Admin', category);
+  }
+
+  @Delete(':id/documents/:docId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a project document' })
+  deleteDocument(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('docId', ParseIntPipe) docId: number,
+    @TenantId() companyId: number,
+  ) {
+    return this.projectsService.deleteDocument(id, docId, companyId);
+  }
 }
 
 // ── Employee read-only endpoints: /api/employee/projects ──────────────────
@@ -99,5 +158,51 @@ export class EmployeeProjectsController {
   @ApiOperation({ summary: 'List all active projects (for task sheet dropdowns)' })
   findAllActive(@TenantId() companyId: number) {
     return this.projectsService.findAll(companyId, { status: 'active', limit: 200 } as any);
+  }
+
+  @Get(':id')
+  @ApiOperation({ summary: 'Get a single project by ID' })
+  findOne(
+    @Param('id', ParseIntPipe) id: number,
+    @TenantId() companyId: number,
+  ) {
+    return this.projectsService.findOne(id, companyId);
+  }
+
+  @Get(':id/documents')
+  @ApiOperation({ summary: 'List project documents' })
+  getDocuments(@Param('id', ParseIntPipe) id: number, @TenantId() companyId: number) {
+    return this.projectsService.getDocuments(id, companyId);
+  }
+
+  @Post(':id/documents')
+  @ApiOperation({ summary: 'Upload a project document' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: documentStorage,
+      limits: { fileSize: 10 * 1024 * 1024 },
+      fileFilter: documentFileFilter,
+    }),
+  )
+  uploadDocument(
+    @Param('id', ParseIntPipe) id: number,
+    @TenantId() companyId: number,
+    @CurrentUser('empName') empName: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('category') category?: string,
+  ) {
+    return this.projectsService.uploadDocument(id, companyId, file, empName ?? 'Employee', category);
+  }
+
+  @Delete(':id/documents/:docId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a project document' })
+  deleteDocument(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('docId', ParseIntPipe) docId: number,
+    @TenantId() companyId: number,
+  ) {
+    return this.projectsService.deleteDocument(id, docId, companyId);
   }
 }

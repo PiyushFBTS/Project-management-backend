@@ -21,6 +21,7 @@ import { UpdateTaskStatusDto } from './dto/update-task-status.dto';
 import { CreateCommentDto } from './dto/create-comment.dto';
 import { FilterTasksDto } from './dto/filter-tasks.dto';
 import { ProjectTaskHistory, TaskHistoryAction } from '../database/entities/project-task-history.entity';
+import { TicketContributor } from '../database/entities/ticket-contributor.entity';
 
 @Injectable()
 export class ProjectPlanningService {
@@ -39,6 +40,8 @@ export class ProjectPlanningService {
     private readonly adminRepo: Repository<AdminUser>,
     @InjectRepository(ProjectTaskHistory)
     private readonly historyRepo: Repository<ProjectTaskHistory>,
+    @InjectRepository(TicketContributor)
+    private readonly contributorRepo: Repository<TicketContributor>,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -231,7 +234,7 @@ export class ProjectPlanningService {
     return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
-  async createTask(projectId: number, companyId: number, dto: CreateTaskDto, adminId?: number) {
+  async createTask(projectId: number, companyId: number, dto: CreateTaskDto, adminId?: number, employeeId?: number) {
     const project = await this.ensureProject(projectId, companyId);
 
     const maxSort = await this.taskRepo
@@ -258,10 +261,12 @@ export class ProjectPlanningService {
     const saved = await this.taskRepo.save(task);
 
     // Record creation history
-    const creatorName = adminId ? await this.resolvePerformerName(adminId, 'admin') : 'Admin';
+    const performerType: 'admin' | 'employee' = employeeId ? 'employee' : 'admin';
+    const performerId = employeeId ?? adminId ?? 0;
+    const creatorName = await this.resolvePerformerName(performerId, performerType);
     await this.recordHistory(
       saved.id, companyId, TaskHistoryAction.CREATED,
-      adminId ?? 0, 'admin', creatorName,
+      performerId, performerType, creatorName,
       null, null, `Created ticket ${ticketNumber} "${dto.title}"`,
     );
 
@@ -323,7 +328,7 @@ export class ProjectPlanningService {
     return task;
   }
 
-  async updateTask(taskId: number, companyId: number, dto: UpdateTaskDto, adminId?: number) {
+  async updateTask(taskId: number, companyId: number, dto: UpdateTaskDto, adminId?: number, employeeId?: number) {
     const task = await this.ensureTask(taskId, companyId);
     const prevAssignee = task.assigneeId;
     const prevAssigneeName = task.assignee?.empName ?? null;
@@ -337,15 +342,16 @@ export class ProjectPlanningService {
     }
     const saved = await this.taskRepo.save(task);
 
-    const performerName = adminId ? await this.resolvePerformerName(adminId, 'admin') : 'Admin';
-    const performerId = adminId ?? 0;
+    const performerType: 'admin' | 'employee' = employeeId ? 'employee' : 'admin';
+    const performerId = employeeId ?? adminId ?? 0;
+    const performerName = await this.resolvePerformerName(performerId, performerType);
 
     // Record status change history
     if (dto.status && dto.status !== prevStatus) {
       await this.recordHistory(
         saved.id, companyId,
         dto.status === 'closed' ? TaskHistoryAction.CLOSED : TaskHistoryAction.STATUS_CHANGED,
-        performerId, 'admin', performerName,
+        performerId, performerType, performerName,
         prevStatus, saved.status,
         `Status changed from ${prevStatus} to ${saved.status}`,
       );
@@ -355,7 +361,7 @@ export class ProjectPlanningService {
     if (dto.priority && dto.priority !== prevPriority) {
       await this.recordHistory(
         saved.id, companyId, TaskHistoryAction.PRIORITY_CHANGED,
-        performerId, 'admin', performerName,
+        performerId, performerType, performerName,
         prevPriority, saved.priority,
         `Priority changed from ${prevPriority} to ${saved.priority}`,
       );
@@ -366,7 +372,7 @@ export class ProjectPlanningService {
       const newAssigneeName = await this.resolvePerformerName(dto.assigneeId, 'employee');
       await this.recordHistory(
         saved.id, companyId, TaskHistoryAction.REASSIGNED,
-        performerId, 'admin', performerName,
+        performerId, performerType, performerName,
         prevAssigneeName, newAssigneeName,
         `Reassigned from ${prevAssigneeName ?? 'Unassigned'} to ${newAssigneeName}`,
       );
@@ -1048,5 +1054,82 @@ export class ProjectPlanningService {
     }
 
     return task;
+  }
+
+  // ── Ticket Contributors ─────────────────────────────────────────────────────
+
+  /**
+   * Get suggested contributors from ticket history (employees who were assigned/reassigned).
+   * Collects all names from old_value + new_value in history, looks up matching employees.
+   */
+  async getSuggestedContributors(taskId: number, companyId: number) {
+    const task = await this.ensureTask(taskId, companyId);
+
+    // Collect all unique names from history (both old_value and new_value)
+    const nameRows = await this.taskRepo.query(
+      `SELECT DISTINCT name FROM (
+         SELECT h.old_value AS name FROM project_task_history h
+           WHERE h.task_id = ? AND h.company_id = ? AND h.action IN ('assigned', 'reassigned') AND h.old_value IS NOT NULL
+         UNION
+         SELECT h.new_value AS name FROM project_task_history h
+           WHERE h.task_id = ? AND h.company_id = ? AND h.action IN ('assigned', 'reassigned') AND h.new_value IS NOT NULL
+       ) names WHERE name != 'Unassigned'`,
+      [taskId, companyId, taskId, companyId],
+    );
+
+    const names: string[] = nameRows.map((r: any) => r.name).filter(Boolean);
+
+    // Find matching employees by name
+    const empIds = new Set<number>();
+    if (names.length > 0) {
+      const employees = await this.employeeRepo
+        .createQueryBuilder('e')
+        .where('e.companyId = :companyId', { companyId })
+        .andWhere('e.empName IN (:...names)', { names })
+        .getMany();
+      employees.forEach((e) => empIds.add(e.id));
+    }
+
+    // Also include current assignee
+    if (task.assigneeId) empIds.add(task.assigneeId);
+
+    // Get existing contributors
+    const existing = await this.contributorRepo.find({ where: { taskId }, relations: ['employee'] });
+    const existingIds = new Set(existing.map((c) => c.employeeId));
+
+    // Fetch employee details
+    const allIds = [...empIds];
+    const empDetails = allIds.length > 0
+      ? await this.employeeRepo.find({ where: { id: In(allIds) }, select: ['id', 'empName', 'empCode'] })
+      : [];
+
+    return {
+      suggested: empDetails.map((e) => ({ id: e.id, empName: e.empName, empCode: e.empCode, isContributor: existingIds.has(e.id) })),
+      contributors: existing.map((c) => ({ id: c.employeeId, empName: c.employee?.empName, empCode: c.employee?.empCode })),
+    };
+  }
+
+  /** Save the final list of contributors for a task (replaces existing) */
+  async setContributors(taskId: number, companyId: number, employeeIds: number[]) {
+    await this.ensureTask(taskId, companyId);
+
+    // Remove all existing
+    await this.contributorRepo.delete({ taskId });
+
+    // Insert new
+    if (employeeIds.length > 0) {
+      const entities = employeeIds.map((employeeId) =>
+        this.contributorRepo.create({ taskId, employeeId, companyId }),
+      );
+      await this.contributorRepo.save(entities);
+    }
+
+    return this.contributorRepo.find({ where: { taskId }, relations: ['employee'] });
+  }
+
+  /** Get contributors for a task */
+  async getContributors(taskId: number, companyId: number) {
+    await this.ensureTask(taskId, companyId);
+    return this.contributorRepo.find({ where: { taskId }, relations: ['employee'] });
   }
 }

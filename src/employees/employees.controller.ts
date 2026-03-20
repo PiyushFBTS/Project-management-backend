@@ -89,6 +89,12 @@ export class EmployeesController {
     return this.employeesService.findByConsultantType(companyId, type);
   }
 
+  @Get('admin/:id')
+  @ApiOperation({ summary: 'Get admin user by ID (employee-like shape)' })
+  findAdmin(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.employeesService.findAdmin(id, companyId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get employee by ID' })
   findOne(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {

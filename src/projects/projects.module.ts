@@ -5,10 +5,11 @@ import { ProjectsController, EmployeeProjectsController } from './projects.contr
 import { Project } from '../database/entities/project.entity';
 import { Employee } from '../database/entities/employee.entity';
 import { AdminUser } from '../database/entities/admin-user.entity';
+import { ProjectDocument } from '../database/entities/project-document.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Project, Employee, AdminUser]), NotificationsModule],
+  imports: [TypeOrmModule.forFeature([Project, Employee, AdminUser, ProjectDocument]), NotificationsModule],
   providers: [ProjectsService],
   controllers: [ProjectsController, EmployeeProjectsController],
   exports: [ProjectsService],

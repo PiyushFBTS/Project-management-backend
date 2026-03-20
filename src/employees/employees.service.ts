@@ -84,6 +84,26 @@ export class EmployeesService {
     return employee;
   }
 
+  async findAdmin(id: number, companyId: number) {
+    const admin = await this.adminRepo.findOne({ where: { id, companyId } });
+    if (!admin) throw new NotFoundException(`Admin #${id} not found`);
+    // Return in employee-like shape for the frontend
+    return {
+      id: admin.id,
+      empCode: 'ADMIN',
+      empName: admin.name,
+      email: admin.email,
+      mobileNumber: (admin as any).mobileNumber ?? null,
+      consultantType: 'admin',
+      isActive: true,
+      isHr: false,
+      dateOfBirth: null,
+      joiningDate: null,
+      createdAt: admin.createdAt,
+      _type: 'admin',
+    };
+  }
+
   async findByConsultantType(companyId: number, type: ConsultantType) {
     return this.employeeRepo.find({
       where: { consultantType: type, isActive: true, companyId },
