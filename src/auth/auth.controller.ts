@@ -20,6 +20,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { JwtAdminGuard } from './guards/jwt-admin.guard';
 import { JwtEmployeeGuard } from './guards/jwt-employee.guard';
+import { JwtClientGuard } from './guards/jwt-client.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @ApiTags('Auth')
@@ -38,10 +39,12 @@ export class AuthController {
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Refresh access token (pass type: admin | employee)' })
+  @ApiOperation({ summary: 'Refresh access token (pass type: admin | employee | client)' })
   refresh(@Body() dto: RefreshTokenDto) {
     if (dto.type === 'employee')
       return this.authService.refreshEmployeeToken(dto.refreshToken);
+    if (dto.type === 'client')
+      return this.authService.refreshClientToken(dto.refreshToken);
     return this.authService.refreshAdminToken(dto.refreshToken);
   }
 
@@ -98,5 +101,22 @@ export class AuthController {
     @Body() dto: ChangePasswordDto,
   ) {
     return this.authService.changeEmployeePassword(employeeId, dto);
+  }
+
+  // ── Client ────────────────────────────────────────────────────────────────
+
+  @Post('client/login')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Client login — returns JWT tokens' })
+  loginClient(@Body() dto: { email: string; password: string }) {
+    return this.authService.loginClient(dto);
+  }
+
+  @Get('client/profile')
+  @UseGuards(JwtClientGuard)
+  @ApiBearerAuth('client-jwt')
+  @ApiOperation({ summary: 'Get current client profile' })
+  getClientProfile(@CurrentUser('id') clientId: number) {
+    return this.authService.getClientProfile(clientId);
   }
 }

@@ -22,6 +22,7 @@ import { ProjectsService } from './projects.service';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { FilterProjectDto } from './dto/filter-project.dto';
+import { CreateClientDto } from './dto/create-client.dto';
 import { JwtAdminGuard } from '../auth/guards/jwt-admin.guard';
 import { JwtEmployeeGuard } from '../auth/guards/jwt-employee.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -130,6 +131,34 @@ export class ProjectsController {
   ) {
     return this.projectsService.deleteDocument(id, docId, companyId);
   }
+
+  // ── Client Users ──
+  @Get(':id/clients')
+  @ApiOperation({ summary: 'List client users for a project' })
+  getClients(@Param('id', ParseIntPipe) id: number, @TenantId() companyId: number) {
+    return this.projectsService.getClients(id, companyId);
+  }
+
+  @Post(':id/clients')
+  @ApiOperation({ summary: 'Add a client user to a project' })
+  createClient(
+    @Param('id', ParseIntPipe) id: number,
+    @TenantId() companyId: number,
+    @Body() dto: CreateClientDto,
+  ) {
+    return this.projectsService.createClient(id, companyId, dto);
+  }
+
+  @Delete(':id/clients/:clientId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Remove a client user from a project' })
+  deleteClient(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('clientId', ParseIntPipe) clientId: number,
+    @TenantId() companyId: number,
+  ) {
+    return this.projectsService.deleteClient(id, clientId, companyId);
+  }
 }
 
 // ── Employee read-only endpoints: /api/employee/projects ──────────────────
@@ -158,6 +187,12 @@ export class EmployeeProjectsController {
   @ApiOperation({ summary: 'List all active projects (for task sheet dropdowns)' })
   findAllActive(@TenantId() companyId: number) {
     return this.projectsService.findAll(companyId, { status: 'active', limit: 200 } as any);
+  }
+
+  @Get(':id/clients')
+  @ApiOperation({ summary: 'List client users for a project (employee access)' })
+  getProjectClients(@Param('id', ParseIntPipe) id: number, @TenantId() companyId: number) {
+    return this.projectsService.getClients(id, companyId);
   }
 
   @Get(':id')

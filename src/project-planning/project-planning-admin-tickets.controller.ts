@@ -1,15 +1,21 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
   Patch,
   Post,
   Query,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ProjectPlanningService } from './project-planning.service';
 import { JwtAdminGuard } from '../auth/guards/jwt-admin.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
@@ -79,6 +85,17 @@ export class ProjectPlanningAdminTicketsController {
     return this.service.adminReassignTask(taskId, companyId, dto.assigneeId, adminId, dto.assigneeType);
   }
 
+  @Patch(':taskId/reassign-any')
+  @ApiOperation({ summary: 'Reassign task to employee or client' })
+  reassignToAny(
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @TenantId() companyId: number,
+    @CurrentUser('id') adminId: number,
+    @Body() body: { employeeId?: number; clientId?: number; adminId?: number },
+  ) {
+    return this.service.reassignToAny(taskId, companyId, body, adminId, 'admin');
+  }
+
   @Get(':taskId/history')
   @ApiOperation({ summary: 'Get task history / audit log' })
   getTaskHistory(
@@ -125,5 +142,48 @@ export class ProjectPlanningAdminTicketsController {
     @Body() body: { employeeIds: number[] },
   ) {
     return this.service.setContributors(taskId, companyId, body.employeeIds);
+  }
+
+  // ── Attachments ──
+
+  @Get(':taskId/attachments')
+  @ApiOperation({ summary: 'List task attachments' })
+  getAttachments(@Param('taskId', ParseIntPipe) taskId: number, @TenantId() companyId: number) {
+    return this.service.getAttachments(taskId, companyId);
+  }
+
+  @Post(':taskId/attachments')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload task attachment' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: './uploads/task-attachments',
+        filename: (_req, file, cb) => cb(null, `att-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`),
+      }),
+      limits: { fileSize: 10 * 1024 * 1024 },
+      fileFilter: (_req: any, file: any, cb: any) => {
+        if (/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|jpg|jpeg|png|gif|webp|txt|csv)$/i.test(file.originalname)) cb(null, true);
+        else cb(new Error('File type not allowed'), false);
+      },
+    }),
+  )
+  uploadAttachment(
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @TenantId() companyId: number,
+    @CurrentUser('name') adminName: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.service.uploadAttachment(taskId, companyId, file, adminName ?? 'Admin');
+  }
+
+  @Delete(':taskId/attachments/:attId')
+  @ApiOperation({ summary: 'Delete task attachment' })
+  deleteAttachment(
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Param('attId', ParseIntPipe) attId: number,
+    @TenantId() companyId: number,
+  ) {
+    return this.service.deleteAttachment(taskId, attId, companyId);
   }
 }

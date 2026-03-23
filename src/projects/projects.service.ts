@@ -7,10 +7,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as fs from 'fs';
 import { join } from 'path';
+import * as bcrypt from 'bcrypt';
 import { Project, ProjectStatus } from '../database/entities/project.entity';
 import { Employee } from '../database/entities/employee.entity';
 import { AdminUser } from '../database/entities/admin-user.entity';
 import { ProjectDocument, DocumentCategory } from '../database/entities/project-document.entity';
+import { ClientUser } from '../database/entities/client-user.entity';
+import { CreateClientDto } from './dto/create-client.dto';
 import { CreateProjectDto } from './dto/create-project.dto';
 import { UpdateProjectDto } from './dto/update-project.dto';
 import { FilterProjectDto } from './dto/filter-project.dto';
@@ -26,6 +29,7 @@ export class ProjectsService {
     @InjectRepository(Employee) private readonly employeeRepo: Repository<Employee>,
     @InjectRepository(AdminUser) private readonly adminRepo: Repository<AdminUser>,
     @InjectRepository(ProjectDocument) private readonly docRepo: Repository<ProjectDocument>,
+    @InjectRepository(ClientUser) private readonly clientRepo: Repository<ClientUser>,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -190,5 +194,41 @@ export class ProjectsService {
 
     await this.docRepo.remove(doc);
     return { message: 'Document deleted' };
+  }
+
+  // ── Client Users ───────────────────────────────────────────────────────────
+
+  async getClients(projectId: number, companyId: number) {
+    return this.clientRepo.find({
+      where: { projectId, companyId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async createClient(projectId: number, companyId: number, dto: CreateClientDto) {
+    const project = await this.projectRepo.findOne({ where: { id: projectId, companyId } });
+    if (!project) throw new NotFoundException('Project not found');
+
+    // Check duplicate email within company
+    const existing = await this.clientRepo.findOne({ where: { email: dto.email, companyId } });
+    if (existing) throw new ConflictException('A client with this email already exists');
+
+    const passwordHash = await bcrypt.hash(dto.password, 10);
+    const client = this.clientRepo.create({
+      fullName: dto.fullName,
+      email: dto.email,
+      passwordHash,
+      mobileNumber: dto.mobileNumber ?? null,
+      projectId,
+      companyId,
+    });
+    return this.clientRepo.save(client);
+  }
+
+  async deleteClient(projectId: number, clientId: number, companyId: number) {
+    const client = await this.clientRepo.findOne({ where: { id: clientId, projectId, companyId } });
+    if (!client) throw new NotFoundException('Client not found');
+    await this.clientRepo.remove(client);
+    return { message: 'Client removed' };
   }
 }

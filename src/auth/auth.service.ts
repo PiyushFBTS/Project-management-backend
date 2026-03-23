@@ -12,6 +12,7 @@ import * as bcrypt from 'bcrypt';
 import { AdminUser } from '../database/entities/admin-user.entity';
 import { Employee } from '../database/entities/employee.entity';
 import { Company } from '../database/entities/company.entity';
+import { ClientUser } from '../database/entities/client-user.entity';
 import { AdminLoginDto } from './dto/admin-login.dto';
 import { EmployeeLoginDto } from './dto/employee-login.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
@@ -25,6 +26,8 @@ export class AuthService {
     private readonly employeeRepo: Repository<Employee>,
     @InjectRepository(Company)
     private readonly companyRepo: Repository<Company>,
+    @InjectRepository(ClientUser)
+    private readonly clientRepo: Repository<ClientUser>,
     private readonly jwtService: JwtService,
     private readonly configService: ConfigService,
   ) {}
@@ -316,6 +319,108 @@ export class AuthService {
           'JWT_EMPLOYEE_REFRESH_EXPIRY',
           '30d',
         ),
+      },
+    );
+  }
+
+  // ── Client ──────────────────────────────────────────────────────────────────
+
+  async loginClient(dto: { email: string; password: string }) {
+    const client = await this.clientRepo.findOne({
+      where: { email: dto.email, isActive: true },
+      select: ['id', 'fullName', 'email', 'passwordHash', 'projectId', 'companyId', 'mobileNumber'],
+      relations: ['project'],
+    });
+    if (!client) throw new UnauthorizedException('Invalid credentials');
+
+    const valid = await bcrypt.compare(dto.password, client.passwordHash);
+    if (!valid) throw new UnauthorizedException('Invalid credentials');
+
+    // Fetch company info
+    const company = await this.companyRepo.findOne({ where: { id: client.companyId } });
+
+    const accessToken = this.signClientAccess(client);
+    const refreshToken = this.signClientRefresh(client);
+
+    return {
+      accessToken,
+      refreshToken,
+      user: {
+        id: client.id,
+        fullName: client.fullName,
+        email: client.email,
+        mobileNumber: client.mobileNumber,
+        projectId: client.projectId,
+        projectName: client.project?.projectName ?? null,
+        companyId: client.companyId,
+        companyName: company?.name ?? null,
+        companyLogoUrl: company?.logoUrl ?? null,
+      },
+    };
+  }
+
+  async getClientProfile(clientId: number) {
+    const client = await this.clientRepo.findOne({
+      where: { id: clientId, isActive: true },
+      relations: ['project'],
+    });
+    if (!client) throw new UnauthorizedException('Client not found');
+    const company = await this.companyRepo.findOne({ where: { id: client.companyId } });
+    return {
+      id: client.id,
+      fullName: client.fullName,
+      email: client.email,
+      mobileNumber: client.mobileNumber,
+      projectId: client.projectId,
+      projectName: client.project?.projectName ?? null,
+      companyId: client.companyId,
+      companyName: company?.name ?? null,
+      companyLogoUrl: company?.logoUrl ?? null,
+    };
+  }
+
+  async refreshClientToken(refreshToken: string) {
+    try {
+      const payload = this.jwtService.verify(refreshToken, {
+        secret: this.configService.get<string>('JWT_CLIENT_SECRET', 'client-secret-change-me'),
+      });
+      if (payload.type !== 'client') throw new Error();
+      const client = await this.clientRepo.findOne({ where: { id: payload.sub, isActive: true } });
+      if (!client) throw new Error();
+      return { accessToken: this.signClientAccess(client) };
+    } catch {
+      throw new UnauthorizedException('Invalid refresh token');
+    }
+  }
+
+  private signClientAccess(client: ClientUser) {
+    return this.jwtService.sign(
+      {
+        sub: client.id,
+        email: client.email,
+        projectId: client.projectId,
+        companyId: client.companyId,
+        type: 'client',
+      },
+      {
+        secret: this.configService.get<string>('JWT_CLIENT_SECRET', 'client-secret-change-me'),
+        expiresIn: this.configService.get<string>('JWT_CLIENT_EXPIRY', '1h'),
+      },
+    );
+  }
+
+  private signClientRefresh(client: ClientUser) {
+    return this.jwtService.sign(
+      {
+        sub: client.id,
+        email: client.email,
+        projectId: client.projectId,
+        companyId: client.companyId,
+        type: 'client',
+      },
+      {
+        secret: this.configService.get<string>('JWT_CLIENT_SECRET', 'client-secret-change-me'),
+        expiresIn: '30d',
       },
     );
   }

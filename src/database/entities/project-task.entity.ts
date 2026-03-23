@@ -14,6 +14,7 @@ import { Project } from './project.entity';
 import { ProjectPhase } from './project-phase.entity';
 import { Employee } from './employee.entity';
 import { AdminUser } from './admin-user.entity';
+import { ClientUser } from './client-user.entity';
 import { ProjectTaskComment } from './project-task-comment.entity';
 
 export enum TaskPriority {
@@ -76,6 +77,13 @@ export class ProjectTask {
   @ManyToOne(() => AdminUser, { nullable: true, onDelete: 'SET NULL' })
   @JoinColumn({ name: 'assigned_admin_id' })
   assignedAdmin: AdminUser | null;
+
+  @Column({ name: 'assigned_client_id', nullable: true })
+  assignedClientId: number | null;
+
+  @ManyToOne(() => ClientUser, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'assigned_client_id' })
+  assignedClient: ClientUser | null;
 
   @Column({
     type: 'enum',

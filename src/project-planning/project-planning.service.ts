@@ -22,6 +22,9 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 import { FilterTasksDto } from './dto/filter-tasks.dto';
 import { ProjectTaskHistory, TaskHistoryAction } from '../database/entities/project-task-history.entity';
 import { TicketContributor } from '../database/entities/ticket-contributor.entity';
+import { TaskAttachment } from '../database/entities/task-attachment.entity';
+import * as fs from 'fs';
+import { join } from 'path';
 
 @Injectable()
 export class ProjectPlanningService {
@@ -42,6 +45,8 @@ export class ProjectPlanningService {
     private readonly historyRepo: Repository<ProjectTaskHistory>,
     @InjectRepository(TicketContributor)
     private readonly contributorRepo: Repository<TicketContributor>,
+    @InjectRepository(TaskAttachment)
+    private readonly attachmentRepo: Repository<TaskAttachment>,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -92,7 +97,7 @@ export class ProjectPlanningService {
   private async ensureTask(taskId: number, companyId: number): Promise<ProjectTask> {
     const task = await this.taskRepo.findOne({
       where: { id: taskId, companyId },
-      relations: ['assignee', 'assignedAdmin', 'phase', 'project'],
+      relations: ['assignee', 'assignedAdmin', 'assignedClient', 'phase', 'project'],
     });
     if (!task) throw new NotFoundException(`Task #${taskId} not found`);
     return task;
@@ -123,6 +128,19 @@ export class ProjectPlanningService {
       select: ['id', 'name', 'email'],
       order: { name: 'ASC' },
     });
+  }
+
+  // ── Client: get own project entity ─────────────────────────────────────────
+  async getClientProject(projectId: number, companyId: number) {
+    return this.ensureProject(projectId, companyId);
+  }
+
+  async getProjectDocuments(projectId: number, companyId: number) {
+    await this.ensureProject(projectId, companyId);
+    return this.projectRepo.manager.find('ProjectDocument' as any, {
+      where: { projectId, companyId },
+      order: { createdAt: 'DESC' },
+    } as any);
   }
 
   // ── Summary ──────────────────────────────────────────────────────────────────
@@ -219,6 +237,7 @@ export class ProjectPlanningService {
       .createQueryBuilder('t')
       .leftJoinAndSelect('t.assignee', 'assignee')
       .leftJoinAndSelect('t.assignedAdmin', 'assignedAdmin')
+      .leftJoinAndSelect('t.assignedClient', 'assignedClient')
       .leftJoinAndSelect('t.phase', 'phase')
       .where('t.project_id = :projectId AND t.company_id = :companyId', { projectId, companyId })
       .skip((page - 1) * limit)
@@ -297,7 +316,7 @@ export class ProjectPlanningService {
   async getTaskDetail(taskId: number, companyId: number) {
     const task = await this.taskRepo.findOne({
       where: { id: taskId, companyId },
-      relations: ['assignee', 'assignedAdmin', 'phase', 'project', 'comments'],
+      relations: ['assignee', 'assignedAdmin', 'assignedClient', 'phase', 'project', 'comments'],
     });
     if (!task) throw new NotFoundException(`Task #${taskId} not found`);
 
@@ -491,6 +510,98 @@ export class ProjectPlanningService {
     }
 
     return saved;
+  }
+
+  // ── Company employees for client ───────────────────────────────────────────
+
+  async getCompanyEmployeesForClient(companyId: number, projectId?: number) {
+    const employees = await this.employeeRepo.find({
+      where: { companyId, isActive: true },
+      select: ['id', 'empName', 'empCode'],
+      order: { empName: 'ASC' },
+    });
+    const admins = await this.adminRepo.find({
+      where: { companyId, isActive: true },
+      select: ['id', 'name', 'email'],
+      order: { name: 'ASC' },
+    });
+    const clients = projectId
+      ? await this.taskRepo.manager.find('ClientUser' as any, { where: { companyId, projectId, isActive: true } }) as any[]
+      : [];
+    return [
+      ...employees.map(e => ({ id: e.id, empName: e.empName, empCode: e.empCode, _type: 'employee' as const })),
+      ...admins.map(a => ({ id: a.id, empName: a.name, empCode: '', _type: 'admin' as const })),
+      ...clients.map((c: any) => ({ id: c.id, empName: c.fullName ?? c.full_name, empCode: '', _type: 'client' as const })),
+    ];
+  }
+
+  // ── Reassign to employee or client ─────────────────────────────────────────
+
+  async reassignToAny(taskId: number, companyId: number, body: { employeeId?: number; clientId?: number; adminId?: number }, performerId: number, performerType: 'admin' | 'employee') {
+    const task = await this.ensureTask(taskId, companyId);
+    const prevName = task.assignee?.empName ?? task.assignedAdmin?.name ?? task.assignedClient?.fullName ?? 'Unassigned';
+    const performerName = await this.resolvePerformerName(performerId, performerType);
+
+    // Clear all assignment fields first
+    const clearAssignments = () => {
+      task.assigneeId = null;
+      task.assignee = null;
+      task.assignedAdminId = null;
+      task.assignedAdmin = null;
+      task.assignedClientId = null;
+      task.assignedClient = null;
+    };
+
+    if (body.clientId) {
+      const client = await this.taskRepo.manager.findOne('ClientUser' as any, { where: { id: body.clientId, companyId } }) as any;
+      if (!client) throw new NotFoundException(`Client #${body.clientId} not found`);
+      clearAssignments();
+      task.assignedClientId = body.clientId;
+      const saved = await this.taskRepo.save(task);
+      await this.recordHistory(saved.id, companyId, TaskHistoryAction.REASSIGNED, performerId, performerType, performerName, prevName, client.fullName, `Reassigned from ${prevName} to ${client.fullName} (Client)`);
+      return saved;
+    } else if (body.adminId) {
+      const admin = await this.adminRepo.findOne({ where: { id: body.adminId, companyId } });
+      if (!admin) throw new NotFoundException(`Admin #${body.adminId} not found`);
+      clearAssignments();
+      task.assignedAdminId = body.adminId;
+      const saved = await this.taskRepo.save(task);
+      await this.recordHistory(saved.id, companyId, TaskHistoryAction.REASSIGNED, performerId, performerType, performerName, prevName, admin.name, `Reassigned from ${prevName} to ${admin.name} (Admin)`);
+      return saved;
+    } else if (body.employeeId) {
+      const emp = await this.employeeRepo.findOne({ where: { id: body.employeeId, companyId, isActive: true } });
+      if (!emp) throw new NotFoundException(`Employee #${body.employeeId} not found`);
+      clearAssignments();
+      task.assigneeId = body.employeeId;
+      const saved = await this.taskRepo.save(task);
+      await this.recordHistory(saved.id, companyId, TaskHistoryAction.REASSIGNED, performerId, performerType, performerName, prevName, emp.empName, `Reassigned from ${prevName} to ${emp.empName}`);
+      if (body.employeeId !== performerId || performerType !== 'employee') {
+        await this.notificationsService.create(NotificationType.TASK_ASSIGNED, 'Task Reassigned', `${performerName} assigned you task ${saved.ticketNumber}`, companyId, { taskId: saved.id, projectId: saved.projectId }, body.employeeId);
+      }
+      return saved;
+    }
+    throw new NotFoundException('Must provide employeeId, adminId, or clientId');
+  }
+
+  // ── Client: My Tasks (assigned to client) ──────────────────────────────────
+
+  async getClientMyTasks(clientId: number, companyId: number, filter: FilterTasksDto) {
+    const { page = 1, limit = 20, status, priority, search } = filter;
+    const qb = this.taskRepo
+      .createQueryBuilder('t')
+      .leftJoinAndSelect('t.project', 'p')
+      .leftJoinAndSelect('t.assignee', 'a')
+      .leftJoinAndSelect('t.assignedClient', 'ac')
+      .leftJoinAndSelect('t.phase', 'ph')
+      .where('t.assigned_client_id = :clientId AND t.company_id = :companyId', { clientId, companyId });
+
+    if (status) qb.andWhere('t.status = :status', { status });
+    if (priority) qb.andWhere('t.priority = :priority', { priority });
+    if (search) qb.andWhere('(t.ticket_number LIKE :s OR t.title LIKE :s)', { s: `%${search}%` });
+
+    qb.orderBy('t.id', 'DESC').skip((page - 1) * limit).take(limit);
+    const [data, total] = await qb.getManyAndCount();
+    return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
   // ── Employee: My Tasks ───────────────────────────────────────────────────────
@@ -1027,7 +1138,7 @@ export class ProjectPlanningService {
   async searchByTicket(ticketNumber: string, companyId: number) {
     const task = await this.taskRepo.findOne({
       where: { ticketNumber, companyId },
-      relations: ['assignee', 'assignedAdmin', 'phase', 'project', 'comments'],
+      relations: ['assignee', 'assignedAdmin', 'assignedClient', 'phase', 'project', 'comments'],
     });
     if (!task) throw new NotFoundException(`Ticket "${ticketNumber}" not found`);
 
@@ -1131,5 +1242,38 @@ export class ProjectPlanningService {
   async getContributors(taskId: number, companyId: number) {
     await this.ensureTask(taskId, companyId);
     return this.contributorRepo.find({ where: { taskId }, relations: ['employee'] });
+  }
+
+  // ── Task Attachments ────────────────────────────────────────────────────────
+
+  async getAttachments(taskId: number, companyId: number) {
+    await this.ensureTask(taskId, companyId);
+    return this.attachmentRepo.find({ where: { taskId, companyId }, order: { createdAt: 'DESC' } });
+  }
+
+  async uploadAttachment(taskId: number, companyId: number, file: Express.Multer.File, uploadedByName: string) {
+    await this.ensureTask(taskId, companyId);
+    const att = this.attachmentRepo.create({
+      taskId,
+      companyId,
+      fileName: file.filename,
+      originalName: file.originalname,
+      filePath: `/uploads/task-attachments/${file.filename}`,
+      fileSize: file.size,
+      mimeType: file.mimetype,
+      uploadedByName,
+    });
+    return this.attachmentRepo.save(att);
+  }
+
+  async deleteAttachment(taskId: number, attachmentId: number, companyId: number) {
+    const att = await this.attachmentRepo.findOne({ where: { id: attachmentId, taskId, companyId } });
+    if (!att) throw new NotFoundException('Attachment not found');
+    try {
+      const filePath = join(process.cwd(), 'uploads', 'task-attachments', att.fileName);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch { /* ignore */ }
+    await this.attachmentRepo.remove(att);
+    return { message: 'Attachment deleted' };
   }
 }

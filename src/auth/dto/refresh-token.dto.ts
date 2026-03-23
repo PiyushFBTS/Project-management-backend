@@ -7,8 +7,8 @@ export class RefreshTokenDto {
   @IsNotEmpty()
   refreshToken: string;
 
-  @ApiPropertyOptional({ enum: ['admin', 'employee'], default: 'admin' })
-  @IsIn(['admin', 'employee'])
+  @ApiPropertyOptional({ enum: ['admin', 'employee', 'client'], default: 'admin' })
+  @IsIn(['admin', 'employee', 'client'])
   @IsOptional()
-  type?: 'admin' | 'employee' = 'admin';
+  type?: 'admin' | 'employee' | 'client' = 'admin';
 }

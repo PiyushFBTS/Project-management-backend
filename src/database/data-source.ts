@@ -37,6 +37,8 @@ import { PostalCode } from './entities/postal-code.entity';
 import { EmailLog } from './entities/email-log.entity';
 import { TicketContributor } from './entities/ticket-contributor.entity';
 import { ProjectDocument } from './entities/project-document.entity';
+import { ClientUser } from './entities/client-user.entity';
+import { TaskAttachment } from './entities/task-attachment.entity';
 
 export const AppDataSource = new DataSource({
   type: 'mysql',
@@ -45,7 +47,7 @@ export const AppDataSource = new DataSource({
   username: process.env.DB_USERNAME || 'root',
   password: process.env.DB_PASSWORD || '',
   database: process.env.DB_DATABASE || 'it_project_management',
-  entities: [Company, AdminUser, Project, TaskType, Employee, DailyTaskSheet, TaskEntry, Notification, LeaveType, LeaveRequest, LeaveRequestWatcher, SmtpConfig, ProjectPhase, ProjectTask, ProjectTaskComment, ProjectTaskHistory, Country, State, City, Currency, PostalCode, EmailLog, TicketContributor, ProjectDocument],
+  entities: [Company, AdminUser, Project, TaskType, Employee, DailyTaskSheet, TaskEntry, Notification, LeaveType, LeaveRequest, LeaveRequestWatcher, SmtpConfig, ProjectPhase, ProjectTask, ProjectTaskComment, ProjectTaskHistory, Country, State, City, Currency, PostalCode, EmailLog, TicketContributor, ProjectDocument, ClientUser, TaskAttachment],
   migrations: [join(__dirname, 'migrations', '*.ts')],
   synchronize: false,
   logging: process.env.DB_LOGGING === 'true',

@@ -7,18 +7,20 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtAdminStrategy } from './strategies/jwt-admin.strategy';
 import { JwtEmployeeStrategy } from './strategies/jwt-employee.strategy';
+import { JwtClientStrategy } from './strategies/jwt-client.strategy';
 import { AdminUser } from '../database/entities/admin-user.entity';
 import { Employee } from '../database/entities/employee.entity';
 import { Company } from '../database/entities/company.entity';
+import { ClientUser } from '../database/entities/client-user.entity';
 
 @Module({
   imports: [
     ConfigModule,
     PassportModule,
-    JwtModule.register({}), // Secrets are set per sign/verify call — not globally
-    TypeOrmModule.forFeature([AdminUser, Employee, Company]),
+    JwtModule.register({}),
+    TypeOrmModule.forFeature([AdminUser, Employee, Company, ClientUser]),
   ],
-  providers: [AuthService, JwtAdminStrategy, JwtEmployeeStrategy],
+  providers: [AuthService, JwtAdminStrategy, JwtEmployeeStrategy, JwtClientStrategy],
   controllers: [AuthController],
   exports: [AuthService, JwtModule],
 })
