@@ -7,6 +7,7 @@ import * as bcrypt from 'bcrypt';
 import { Employee, ConsultantType } from '../database/entities/employee.entity';
 import { Company } from '../database/entities/company.entity';
 import { AdminUser } from '../database/entities/admin-user.entity';
+import { EmployeeDocument, EmployeeDocCategory } from '../database/entities/employee-document.entity';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { UpdateEmployeeSelfDto } from './dto/update-employee-self.dto';
@@ -26,6 +27,8 @@ export class EmployeesService {
     private readonly companyRepo: Repository<Company>,
     @InjectRepository(AdminUser)
     private readonly adminRepo: Repository<AdminUser>,
+    @InjectRepository(EmployeeDocument)
+    private readonly empDocRepo: Repository<EmployeeDocument>,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -318,5 +321,56 @@ export class EmployeesService {
         `User limit reached (${company.userLimit}). Contact platform admin to increase your limit.`,
       );
     }
+  }
+
+  // ── Employee Documents ────────────────────────────────────────────────────
+
+  async getDocuments(userType: string, userId: number, companyId: number) {
+    return this.empDocRepo.find({
+      where: { userType, userId, companyId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async uploadDocument(
+    userType: string,
+    userId: number,
+    companyId: number,
+    file: Express.Multer.File,
+    uploadedByName: string,
+    category?: string,
+  ) {
+    if (!file) throw new NotFoundException('No file uploaded. Check file type is allowed (pdf, doc, docx, xls, xlsx, jpg, jpeg, png, gif, webp, txt).');
+    const validCategories = Object.values(EmployeeDocCategory);
+    const cat = validCategories.includes(category as EmployeeDocCategory)
+      ? (category as EmployeeDocCategory)
+      : EmployeeDocCategory.OTHER;
+
+    const doc = this.empDocRepo.create({
+      userType,
+      userId,
+      companyId,
+      fileName: file.filename,
+      originalName: file.originalname,
+      filePath: `/uploads/employee-documents/${file.filename}`,
+      fileSize: file.size,
+      mimeType: file.mimetype,
+      category: cat,
+      uploadedByName,
+    });
+    return this.empDocRepo.save(doc);
+  }
+
+  async deleteDocument(docId: number, companyId: number) {
+    const doc = await this.empDocRepo.findOne({ where: { id: docId, companyId } });
+    if (!doc) throw new NotFoundException('Document not found');
+    const fs = await import('fs');
+    const { join } = await import('path');
+    try {
+      const filePath = join(process.cwd(), 'uploads', 'employee-documents', doc.fileName);
+      if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+    } catch { /* ignore */ }
+    await this.empDocRepo.remove(doc);
+    return { message: 'Document deleted' };
   }
 }

@@ -1,8 +1,11 @@
 import {
-  Body, Controller, Delete, Get, HttpCode, HttpStatus,
-  Param, ParseIntPipe, Patch, Post, Query, UseGuards,
+  Body, Controller, Delete, ForbiddenException, Get, HttpCode, HttpStatus,
+  Param, ParseIntPipe, Patch, Post, Query, UploadedFile, UseGuards, UseInterceptors,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { diskStorage } from 'multer';
+import { extname } from 'path';
+import { ApiBearerAuth, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { EmployeesService } from './employees.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
@@ -49,6 +52,91 @@ export class EmployeeColleaguesController {
     @Body() dto: UpdateEmployeeSelfDto,
   ) {
     return this.employeesService.updateSelf(employeeId, companyId, dto);
+  }
+
+  @Get('me/documents')
+  @ApiOperation({ summary: 'Get own documents' })
+  getMyDocs(@TenantId() companyId: number, @CurrentUser('id') empId: number) {
+    return this.employeesService.getDocuments('employee', empId, companyId);
+  }
+
+  @Post('me/documents')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload own document (Aadhaar/PAN only)' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: './uploads/employee-documents',
+        filename: (_req, file, cb) => cb(null, `edoc-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`),
+      }),
+      limits: { fileSize: 10 * 1024 * 1024 },
+      fileFilter: (_req: any, file: any, cb: any) => {
+        if (/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|jpg|jpeg|png|gif|webp|txt|csv|bmp|tiff|tif|svg)$/i.test(file.originalname)) cb(null, true);
+        else cb(null, false);
+      },
+    }),
+  )
+  uploadMyDoc(
+    @TenantId() companyId: number,
+    @CurrentUser('id') empId: number,
+    @CurrentUser('empName') empName: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('category') category: string,
+  ) {
+    // Employees can only upload aadhaar and pan for themselves
+    const allowed = ['aadhaar', 'pan'];
+    if (!allowed.includes(category)) {
+      throw new ForbiddenException('Employees can only upload Aadhaar or PAN documents');
+    }
+    return this.employeesService.uploadDocument('employee', empId, companyId, file, empName ?? 'Employee', category);
+  }
+
+  // ── Employee Documents (HR can manage) ──
+
+  @Get('documents/:userType/:userId')
+  @ApiOperation({ summary: 'List employee/admin documents (HR)' })
+  getDocsEmp(
+    @TenantId() companyId: number,
+    @Param('userType') userType: string,
+    @Param('userId', ParseIntPipe) userId: number,
+  ) {
+    return this.employeesService.getDocuments(userType, userId, companyId);
+  }
+
+  @Post('documents/:userType/:userId')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload employee/admin document (HR)' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: './uploads/employee-documents',
+        filename: (_req, file, cb) => cb(null, `edoc-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`),
+      }),
+      limits: { fileSize: 10 * 1024 * 1024 },
+      fileFilter: (_req: any, file: any, cb: any) => {
+        if (/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|jpg|jpeg|png|gif|webp|txt|csv|bmp|tiff|tif|svg)$/i.test(file.originalname)) cb(null, true);
+        else cb(null, false);
+      },
+    }),
+  )
+  uploadDocEmp(
+    @TenantId() companyId: number,
+    @Param('userType') userType: string,
+    @Param('userId', ParseIntPipe) userId: number,
+    @CurrentUser('empName') empName: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('category') category: string,
+  ) {
+    return this.employeesService.uploadDocument(userType, userId, companyId, file, empName ?? 'HR', category);
+  }
+
+  @Delete('documents/:docId')
+  @ApiOperation({ summary: 'Delete employee/admin document (HR)' })
+  deleteDocEmp(
+    @TenantId() companyId: number,
+    @Param('docId', ParseIntPipe) docId: number,
+  ) {
+    return this.employeesService.deleteDocument(docId, companyId);
   }
 
   @Get(':id')
@@ -128,5 +216,53 @@ export class EmployeesController {
     @Body() dto: AssignProjectDto,
   ) {
     return this.employeesService.assignProject(id, companyId, dto);
+  }
+
+  // ── Employee Documents (admin manages) ──
+
+  @Get('documents/:userType/:userId')
+  @ApiOperation({ summary: 'List employee/admin documents' })
+  getDocs(
+    @TenantId() companyId: number,
+    @Param('userType') userType: string,
+    @Param('userId', ParseIntPipe) userId: number,
+  ) {
+    return this.employeesService.getDocuments(userType, userId, companyId);
+  }
+
+  @Post('documents/:userType/:userId')
+  @ApiConsumes('multipart/form-data')
+  @ApiOperation({ summary: 'Upload employee/admin document' })
+  @UseInterceptors(
+    FileInterceptor('file', {
+      storage: diskStorage({
+        destination: './uploads/employee-documents',
+        filename: (_req, file, cb) => cb(null, `edoc-${Date.now()}-${Math.round(Math.random() * 1e9)}${extname(file.originalname)}`),
+      }),
+      limits: { fileSize: 10 * 1024 * 1024 },
+      fileFilter: (_req: any, file: any, cb: any) => {
+        if (/\.(pdf|doc|docx|xls|xlsx|ppt|pptx|jpg|jpeg|png|gif|webp|txt|csv|bmp|tiff|tif|svg)$/i.test(file.originalname)) cb(null, true);
+        else cb(null, false);
+      },
+    }),
+  )
+  uploadDoc(
+    @TenantId() companyId: number,
+    @Param('userType') userType: string,
+    @Param('userId', ParseIntPipe) userId: number,
+    @CurrentUser('name') adminName: string,
+    @UploadedFile() file: Express.Multer.File,
+    @Body('category') category: string,
+  ) {
+    return this.employeesService.uploadDocument(userType, userId, companyId, file, adminName ?? 'Admin', category);
+  }
+
+  @Delete('documents/:docId')
+  @ApiOperation({ summary: 'Delete employee/admin document' })
+  deleteDoc(
+    @TenantId() companyId: number,
+    @Param('docId', ParseIntPipe) docId: number,
+  ) {
+    return this.employeesService.deleteDocument(docId, companyId);
   }
 }

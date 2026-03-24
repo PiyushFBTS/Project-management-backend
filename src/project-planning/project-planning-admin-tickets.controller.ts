@@ -54,6 +54,16 @@ export class ProjectPlanningAdminTicketsController {
     return this.service.getCompanyAdmins(companyId);
   }
 
+  @Get('my-tasks')
+  @ApiOperation({ summary: 'Tickets assigned to the current admin' })
+  getMyTasks(
+    @CurrentUser('id') adminId: number,
+    @TenantId() companyId: number,
+    @Query() filter: FilterTasksDto,
+  ) {
+    return this.service.getAdminMyTasks(adminId, companyId, filter);
+  }
+
   @Get(':taskId')
   @ApiOperation({ summary: 'Task detail with comments' })
   getTaskDetail(

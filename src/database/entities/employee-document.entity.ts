@@ -8,20 +8,28 @@ import {
   Index,
 } from 'typeorm';
 import { Company } from './company.entity';
-import { ProjectTask } from './project-task.entity';
 
-@Entity('task_attachments')
-export class TaskAttachment {
+export enum EmployeeDocCategory {
+  AADHAAR = 'aadhaar',
+  PAN = 'pan',
+  JOINING = 'joining',
+  EXIT = 'exit',
+  OTHER = 'other',
+}
+
+@Entity('employee_documents')
+export class EmployeeDocument {
   @PrimaryGeneratedColumn()
   id: number;
 
-  @Index('idx_tattach_task')
-  @Column({ name: 'task_id' })
-  taskId: number;
+  /** 'employee' or 'admin' */
+  @Column({ name: 'user_type', length: 20 })
+  userType: string;
 
-  @ManyToOne(() => ProjectTask, { onDelete: 'CASCADE' })
-  @JoinColumn({ name: 'task_id' })
-  task: ProjectTask;
+  /** ID in the corresponding table (employees.id or admin_users.id) */
+  @Index('idx_empdoc_user')
+  @Column({ name: 'user_id' })
+  userId: number;
 
   @Column({ name: 'file_name', length: 300 })
   fileName: string;
@@ -38,10 +46,13 @@ export class TaskAttachment {
   @Column({ name: 'mime_type', length: 100 })
   mimeType: string;
 
+  @Column({ type: 'enum', enum: EmployeeDocCategory, default: EmployeeDocCategory.OTHER })
+  category: EmployeeDocCategory;
+
   @Column({ name: 'uploaded_by_name', length: 200 })
   uploadedByName: string;
 
-  @Index('idx_tattach_company')
+  @Index('idx_empdoc_company')
   @Column({ name: 'company_id' })
   companyId: number;
 

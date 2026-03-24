@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { In, Repository } from 'typeorm';
@@ -132,7 +133,12 @@ export class ProjectPlanningService {
 
   // ── Client: get own project entity ─────────────────────────────────────────
   async getClientProject(projectId: number, companyId: number) {
-    return this.ensureProject(projectId, companyId);
+    const project = await this.projectRepo.findOne({
+      where: { id: projectId, companyId },
+      relations: ['projectManager'],
+    });
+    if (!project) throw new NotFoundException(`Project #${projectId} not found`);
+    return project;
   }
 
   async getProjectDocuments(projectId: number, companyId: number) {
@@ -640,6 +646,30 @@ export class ProjectPlanningService {
       byStatus,
       byPriority,
     };
+  }
+
+  // ── Admin: My Tasks (assigned to admin via assigned_admin_id) ──────────
+  async getAdminMyTasks(adminId: number, companyId: number, filter: FilterTasksDto) {
+    const { page = 1, limit = 50, sort = 'createdAt', order = 'desc', search, status, priority, projectId } = filter;
+
+    const qb = this.taskRepo
+      .createQueryBuilder('t')
+      .leftJoinAndSelect('t.project', 'project')
+      .leftJoinAndSelect('t.phase', 'phase')
+      .leftJoinAndSelect('t.assignee', 'assignee')
+      .leftJoinAndSelect('t.assignedAdmin', 'assignedAdmin')
+      .where('t.assigned_admin_id = :adminId AND t.company_id = :companyId', { adminId, companyId })
+      .skip((page - 1) * limit)
+      .take(limit)
+      .orderBy(`t.${sort === 'sortOrder' ? 'sortOrder' : 'createdAt'}`, order.toUpperCase() as 'ASC' | 'DESC');
+
+    if (search) qb.andWhere('(t.ticket_number LIKE :s OR t.title LIKE :s)', { s: `%${search}%` });
+    if (status) qb.andWhere('t.status = :status', { status });
+    if (priority) qb.andWhere('t.priority = :priority', { priority });
+    if (projectId) qb.andWhere('t.project_id = :projectId', { projectId });
+
+    const [data, total] = await qb.getManyAndCount();
+    return { data, meta: { page, limit, total, totalPages: Math.ceil(total / limit) } };
   }
 
   async getMyTasks(employeeId: number, companyId: number, filter: FilterTasksDto) {
@@ -1252,6 +1282,7 @@ export class ProjectPlanningService {
   }
 
   async uploadAttachment(taskId: number, companyId: number, file: Express.Multer.File, uploadedByName: string) {
+    if (!file) throw new BadRequestException('No file uploaded. Check file type is allowed (pdf, doc, docx, xls, xlsx, ppt, pptx, jpg, jpeg, png, gif, webp, txt, csv).');
     await this.ensureTask(taskId, companyId);
     const att = this.attachmentRepo.create({
       taskId,
