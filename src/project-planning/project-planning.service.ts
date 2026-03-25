@@ -319,6 +319,114 @@ export class ProjectPlanningService {
     return saved;
   }
 
+  // ── Bulk create tasks from Excel ────────────────────────────────────────
+  async bulkCreateTasks(
+    projectId: number,
+    companyId: number,
+    rows: Array<{
+      title: string;
+      description?: string;
+      status?: string;
+      priority?: string;
+      phase?: string;
+      dueDate?: string;
+      estimatedHours?: number;
+    }>,
+    adminId?: number,
+    employeeId?: number,
+  ) {
+    const project = await this.ensureProject(projectId, companyId);
+
+    // Load phases for matching
+    const phases = await this.phaseRepo.find({ where: { projectId, companyId } });
+    const phaseMap = new Map<string, number>();
+    phases.forEach((p) => phaseMap.set(p.name.toLowerCase().trim(), p.id));
+
+    const validStatuses = ['todo', 'in_progress', 'in_review', 'done'];
+    const validPriorities = ['low', 'medium', 'high', 'critical'];
+
+    // Get current task count for ticket numbering
+    let taskCount = await this.taskRepo
+      .createQueryBuilder('t')
+      .where('t.project_id = :projectId', { projectId })
+      .getCount();
+
+    let maxSort = (
+      await this.taskRepo
+        .createQueryBuilder('t')
+        .select('MAX(t.sort_order)', 'max')
+        .where('t.project_id = :projectId', { projectId })
+        .getRawOne()
+    )?.max ?? 0;
+
+    const results: Array<{ index: number; title: string; ticketNumber?: string; taskId?: number; success: boolean; error?: string }> = [];
+
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      try {
+        if (!row.title?.trim()) {
+          results.push({ index: i + 1, title: row.title || '(empty)', success: false, error: 'Title is required' });
+          continue;
+        }
+
+        // Match status
+        const statusRaw = (row.status ?? '').toLowerCase().replace(/\s+/g, '_').trim();
+        const status = validStatuses.includes(statusRaw) ? statusRaw : 'todo';
+
+        // Match priority
+        const priorityRaw = (row.priority ?? '').toLowerCase().trim();
+        const priority = validPriorities.includes(priorityRaw) ? priorityRaw : 'low';
+
+        // Match phase
+        const phaseRaw = (row.phase ?? '').toLowerCase().trim();
+        const phaseId = phaseMap.get(phaseRaw) ?? null;
+
+        // Parse due date
+        let dueDate: string | undefined;
+        if (row.dueDate) {
+          const d = new Date(row.dueDate);
+          if (!isNaN(d.getTime())) dueDate = d.toISOString().split('T')[0];
+        }
+
+        taskCount++;
+        maxSort++;
+        const seq = String(taskCount).padStart(3, '0');
+        const ticketNumber = `${project.projectCode}-${seq}`;
+
+        const task = this.taskRepo.create({
+          title: row.title.trim(),
+          description: row.description?.trim() || undefined,
+          status: status as any,
+          priority: priority as any,
+          dueDate,
+          estimatedHours: row.estimatedHours || undefined,
+          phaseId,
+          projectId,
+          companyId,
+          ticketNumber,
+          sortOrder: maxSort,
+        });
+        const saved = await this.taskRepo.save(task);
+
+        // Record history
+        const performerType: 'admin' | 'employee' = employeeId ? 'employee' : 'admin';
+        const performerId = employeeId ?? adminId ?? 0;
+        const creatorName = await this.resolvePerformerName(performerId, performerType);
+        await this.recordHistory(
+          saved.id, companyId, TaskHistoryAction.CREATED,
+          performerId, performerType, creatorName,
+          null, null, `Created ticket ${ticketNumber} "${row.title.trim()}" (via Excel import)`,
+        );
+
+        results.push({ index: i + 1, title: row.title.trim(), ticketNumber, taskId: saved.id, success: true });
+      } catch (err: any) {
+        results.push({ index: i + 1, title: row.title || '(empty)', success: false, error: err.message ?? 'Unknown error' });
+      }
+    }
+
+    return results;
+  }
+
   async getTaskDetail(taskId: number, companyId: number) {
     const task = await this.taskRepo.findOne({
       where: { id: taskId, companyId },

@@ -118,6 +118,17 @@ export class ProjectPlanningAdminController {
     return this.service.createTask(projectId, companyId, dto, adminId);
   }
 
+  @Post('tasks/bulk')
+  @ApiOperation({ summary: 'Bulk create tasks from Excel import' })
+  bulkCreateTasks(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @TenantId() companyId: number,
+    @CurrentUser('id') adminId: number,
+    @Body() body: { rows: any[] },
+  ) {
+    return this.service.bulkCreateTasks(projectId, companyId, body.rows, adminId);
+  }
+
   @Get('tasks/:taskId')
   @ApiOperation({ summary: 'Task detail with comments' })
   getTaskDetail(

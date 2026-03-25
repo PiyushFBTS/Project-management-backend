@@ -12,6 +12,8 @@ import { Project, ProjectStatus } from '../database/entities/project.entity';
 import { Employee } from '../database/entities/employee.entity';
 import { AdminUser } from '../database/entities/admin-user.entity';
 import { ProjectDocument, DocumentCategory } from '../database/entities/project-document.entity';
+import { ProjectMilestone } from '../database/entities/project-milestone.entity';
+import { ProjectTypeEntity } from '../database/entities/project-type.entity';
 import { ClientUser } from '../database/entities/client-user.entity';
 import { CreateClientDto } from './dto/create-client.dto';
 import { CreateProjectDto } from './dto/create-project.dto';
@@ -29,6 +31,8 @@ export class ProjectsService {
     @InjectRepository(Employee) private readonly employeeRepo: Repository<Employee>,
     @InjectRepository(AdminUser) private readonly adminRepo: Repository<AdminUser>,
     @InjectRepository(ProjectDocument) private readonly docRepo: Repository<ProjectDocument>,
+    @InjectRepository(ProjectMilestone) private readonly milestoneRepo: Repository<ProjectMilestone>,
+    @InjectRepository(ProjectTypeEntity) private readonly projectTypeRepo: Repository<ProjectTypeEntity>,
     @InjectRepository(ClientUser) private readonly clientRepo: Repository<ClientUser>,
     private readonly notificationsService: NotificationsService,
   ) {}
@@ -230,5 +234,86 @@ export class ProjectsService {
     if (!client) throw new NotFoundException('Client not found');
     await this.clientRepo.remove(client);
     return { message: 'Client removed' };
+  }
+
+  // ── Milestones ──────────────────────────────────────────────────────────────
+
+  async getMilestones(projectId: number, companyId: number) {
+    return this.milestoneRepo.find({
+      where: { projectId, companyId },
+      order: { id: 'ASC' },
+    });
+  }
+
+  async createMilestone(projectId: number, companyId: number, dto: { name: string; expectedPercentage: number; expectedAmount: number; receivedPercentage?: number; receivedAmount?: number }) {
+    await this.findOne(projectId, companyId);
+    const milestone = this.milestoneRepo.create({
+      projectId,
+      companyId,
+      name: dto.name,
+      expectedPercentage: dto.expectedPercentage,
+      expectedAmount: dto.expectedAmount,
+      receivedPercentage: dto.receivedPercentage ?? 0,
+      receivedAmount: dto.receivedAmount ?? 0,
+    });
+    return this.milestoneRepo.save(milestone);
+  }
+
+  async bulkCreateMilestones(projectId: number, companyId: number, milestones: Array<{ name: string; expectedPercentage: number; expectedAmount: number; receivedPercentage?: number; receivedAmount?: number }>) {
+    const entities = milestones.map((m) =>
+      this.milestoneRepo.create({
+        projectId,
+        companyId,
+        name: m.name,
+        expectedPercentage: m.expectedPercentage,
+        expectedAmount: m.expectedAmount,
+        receivedPercentage: m.receivedPercentage ?? 0,
+        receivedAmount: m.receivedAmount ?? 0,
+      }),
+    );
+    return this.milestoneRepo.save(entities);
+  }
+
+  async updateMilestone(projectId: number, milestoneId: number, companyId: number, dto: { name?: string; expectedPercentage?: number; expectedAmount?: number; receivedPercentage?: number; receivedAmount?: number }) {
+    const milestone = await this.milestoneRepo.findOne({ where: { id: milestoneId, projectId, companyId } });
+    if (!milestone) throw new NotFoundException('Milestone not found');
+    Object.assign(milestone, dto);
+    return this.milestoneRepo.save(milestone);
+  }
+
+  async deleteMilestone(projectId: number, milestoneId: number, companyId: number) {
+    const milestone = await this.milestoneRepo.findOne({ where: { id: milestoneId, projectId, companyId } });
+    if (!milestone) throw new NotFoundException('Milestone not found');
+    await this.milestoneRepo.remove(milestone);
+    return { message: 'Milestone deleted' };
+  }
+
+  // ── Project Types ───────────────────────────────────────────────────────────
+
+  async getProjectTypes(companyId: number) {
+    return this.projectTypeRepo.find({
+      where: { companyId, isActive: true },
+      order: { id: 'ASC' },
+    });
+  }
+
+  async createProjectType(companyId: number, dto: { value: string; label: string; description?: string }) {
+    const val = dto.value.toLowerCase().replace(/\s+/g, '_').trim();
+    const existing = await this.projectTypeRepo.findOne({ where: { value: val, companyId } });
+    if (existing) throw new ConflictException(`Project type "${val}" already exists`);
+    const pt = this.projectTypeRepo.create({
+      value: val,
+      label: dto.label.trim(),
+      description: dto.description?.trim() ?? '',
+      companyId,
+    });
+    return this.projectTypeRepo.save(pt);
+  }
+
+  async deleteProjectType(companyId: number, typeId: number) {
+    const pt = await this.projectTypeRepo.findOne({ where: { id: typeId, companyId } });
+    if (!pt) throw new NotFoundException('Project type not found');
+    await this.projectTypeRepo.remove(pt);
+    return { message: 'Project type deleted' };
   }
 }

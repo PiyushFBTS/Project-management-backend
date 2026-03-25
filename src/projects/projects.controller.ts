@@ -57,6 +57,29 @@ export class ProjectsController {
     return this.projectsService.findAll(companyId, filter);
   }
 
+  // ── Project Types ──
+  @Get('types/list')
+  @ApiOperation({ summary: 'List all project types for this company' })
+  getProjectTypes(@TenantId() companyId: number) {
+    return this.projectsService.getProjectTypes(companyId);
+  }
+
+  @Post('types')
+  @ApiOperation({ summary: 'Create a new project type' })
+  createProjectType(
+    @TenantId() companyId: number,
+    @Body() dto: { value: string; label: string; description?: string },
+  ) {
+    return this.projectsService.createProjectType(companyId, dto);
+  }
+
+  @Delete('types/:typeId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a project type' })
+  deleteProjectType(@TenantId() companyId: number, @Param('typeId', ParseIntPipe) typeId: number) {
+    return this.projectsService.deleteProjectType(companyId, typeId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get project by ID' })
   findOne(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
@@ -158,6 +181,55 @@ export class ProjectsController {
     @TenantId() companyId: number,
   ) {
     return this.projectsService.deleteClient(id, clientId, companyId);
+  }
+
+  // ── Milestones ──
+  @Get(':id/milestones')
+  @ApiOperation({ summary: 'List milestones for a project' })
+  getMilestones(@Param('id', ParseIntPipe) id: number, @TenantId() companyId: number) {
+    return this.projectsService.getMilestones(id, companyId);
+  }
+
+  @Post(':id/milestones')
+  @ApiOperation({ summary: 'Create a milestone' })
+  createMilestone(
+    @Param('id', ParseIntPipe) id: number,
+    @TenantId() companyId: number,
+    @Body() dto: { name: string; expectedPercentage: number; expectedAmount: number; receivedPercentage?: number; receivedAmount?: number },
+  ) {
+    return this.projectsService.createMilestone(id, companyId, dto);
+  }
+
+  @Post(':id/milestones/bulk')
+  @ApiOperation({ summary: 'Bulk create milestones' })
+  bulkCreateMilestones(
+    @Param('id', ParseIntPipe) id: number,
+    @TenantId() companyId: number,
+    @Body() body: { milestones: Array<{ name: string; expectedPercentage: number; expectedAmount: number; receivedPercentage?: number; receivedAmount?: number }> },
+  ) {
+    return this.projectsService.bulkCreateMilestones(id, companyId, body.milestones);
+  }
+
+  @Patch(':id/milestones/:milestoneId')
+  @ApiOperation({ summary: 'Update a milestone' })
+  updateMilestone(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('milestoneId', ParseIntPipe) milestoneId: number,
+    @TenantId() companyId: number,
+    @Body() dto: { name?: string; expectedPercentage?: number; expectedAmount?: number; receivedPercentage?: number; receivedAmount?: number },
+  ) {
+    return this.projectsService.updateMilestone(id, milestoneId, companyId, dto);
+  }
+
+  @Delete(':id/milestones/:milestoneId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a milestone' })
+  deleteMilestone(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('milestoneId', ParseIntPipe) milestoneId: number,
+    @TenantId() companyId: number,
+  ) {
+    return this.projectsService.deleteMilestone(id, milestoneId, companyId);
   }
 }
 

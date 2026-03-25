@@ -115,6 +115,17 @@ export class ProjectPlanningEmployeePlanningController {
     return this.service.createTask(projectId, companyId, dto, undefined, employeeId);
   }
 
+  @Post('tasks/bulk')
+  @ApiOperation({ summary: 'Bulk create tasks from Excel import' })
+  bulkCreateTasks(
+    @Param('projectId', ParseIntPipe) projectId: number,
+    @TenantId() companyId: number,
+    @CurrentUser('id') employeeId: number,
+    @Body() body: { rows: any[] },
+  ) {
+    return this.service.bulkCreateTasks(projectId, companyId, body.rows, undefined, employeeId);
+  }
+
   @Get('tasks/:taskId')
   @ApiOperation({ summary: 'Task detail with comments' })
   getTaskDetail(
