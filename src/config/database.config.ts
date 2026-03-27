@@ -23,6 +23,7 @@ import { Currency } from '../database/entities/currency.entity';
 import { PostalCode } from '../database/entities/postal-code.entity';
 import { EmailLog } from '../database/entities/email-log.entity';
 import { TicketContributor } from '../database/entities/ticket-contributor.entity';
+import { TicketAssignee } from '../database/entities/ticket-assignee.entity';
 import { ProjectDocument } from '../database/entities/project-document.entity';
 import { ClientUser } from '../database/entities/client-user.entity';
 import { TaskAttachment } from '../database/entities/task-attachment.entity';
@@ -39,7 +40,7 @@ export const databaseConfig = (
   username: configService.get<string>('DB_USERNAME', 'root'),
   password: configService.get<string>('DB_PASSWORD', ''),
   database: configService.get<string>('DB_DATABASE', 'it_project_management'),
-  entities: [Company, AdminUser, Project, TaskType, Employee, DailyTaskSheet, TaskEntry, Notification, LeaveType, LeaveRequest, LeaveRequestWatcher, SmtpConfig, ProjectPhase, ProjectTask, ProjectTaskComment, ProjectTaskHistory, Country, State, City, Currency, PostalCode, EmailLog, TicketContributor, ProjectDocument, ClientUser, TaskAttachment, EmployeeDocument, ProjectMilestone, ProjectTypeEntity],
+  entities: [Company, AdminUser, Project, TaskType, Employee, DailyTaskSheet, TaskEntry, Notification, LeaveType, LeaveRequest, LeaveRequestWatcher, SmtpConfig, ProjectPhase, ProjectTask, ProjectTaskComment, ProjectTaskHistory, Country, State, City, Currency, PostalCode, EmailLog, TicketContributor, TicketAssignee, ProjectDocument, ClientUser, TaskAttachment, EmployeeDocument, ProjectMilestone, ProjectTypeEntity],
   // NEVER set synchronize: true in production — use migrations instead
   synchronize: configService.get<string>('DB_SYNCHRONIZE') === 'true',
   logging: configService.get<string>('DB_LOGGING') === 'true',

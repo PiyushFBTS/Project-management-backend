@@ -190,4 +190,37 @@ export class ProjectPlanningTicketsController {
   ) {
     return this.service.deleteAttachment(taskId, attId, companyId);
   }
+
+  // ── Multi-Assignee ──────────────────────────────────────────────────
+
+  @Get(':taskId/assignees')
+  @ApiOperation({ summary: 'Get task assignees' })
+  getAssignees(
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @TenantId() companyId: number,
+  ) {
+    return this.service.getTaskAssignees(taskId, companyId);
+  }
+
+  @Post(':taskId/assignees')
+  @ApiOperation({ summary: 'Add assignee to task' })
+  addAssignee(
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @TenantId() companyId: number,
+    @CurrentUser('id') employeeId: number,
+    @Body() body: { userId: number; userType: 'employee' | 'admin' | 'client' },
+  ) {
+    return this.service.addTaskAssignee(taskId, companyId, body.userId, body.userType, employeeId, 'employee');
+  }
+
+  @Delete(':taskId/assignees/:assigneeId')
+  @ApiOperation({ summary: 'Remove assignee from task' })
+  removeAssignee(
+    @Param('taskId', ParseIntPipe) taskId: number,
+    @Param('assigneeId', ParseIntPipe) assigneeId: number,
+    @TenantId() companyId: number,
+    @CurrentUser('id') employeeId: number,
+  ) {
+    return this.service.removeTaskAssignee(taskId, assigneeId, companyId, employeeId, 'employee');
+  }
 }

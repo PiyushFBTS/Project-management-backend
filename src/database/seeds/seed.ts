@@ -51,10 +51,7 @@ function timeStr(h: number, m: number): string {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 async function seed() {
-  console.log('Connecting to database...');
   await AppDataSource.initialize();
-  console.log('Connected.\n');
-
   const defaultCompany = await seedDefaultCompany();
   await seedAdminUsers(defaultCompany.id);
   const projects = await seedProjects(defaultCompany.id);

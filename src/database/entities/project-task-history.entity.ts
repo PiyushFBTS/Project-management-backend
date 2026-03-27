@@ -39,8 +39,8 @@ export class ProjectTaskHistory {
   @Column({ name: 'performed_by_id' })
   performedById: number;
 
-  @Column({ name: 'performed_by_type', type: 'enum', enum: ['admin', 'employee'] })
-  performedByType: 'admin' | 'employee';
+  @Column({ name: 'performed_by_type', type: 'enum', enum: ['admin', 'employee', 'client'] })
+  performedByType: 'admin' | 'employee' | 'client';
 
   @Column({ name: 'performed_by_name', length: 200 })
   performedByName: string;

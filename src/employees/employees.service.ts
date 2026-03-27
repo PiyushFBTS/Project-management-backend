@@ -81,7 +81,7 @@ export class EmployeesService {
   async findOne(id: number, companyId: number): Promise<Employee> {
     const employee = await this.employeeRepo.findOne({
       where: { id, companyId },
-      relations: ['assignedProject', 'reportsTo'],
+      relations: ['assignedProject', 'reportsTo', 'reportsToAdmin'],
     });
     if (!employee) throw new NotFoundException(`Employee #${id} not found`);
     return employee;
@@ -153,6 +153,16 @@ export class EmployeesService {
     }
 
     Object.assign(employee, dto);
+
+    // Enforce: can only report to employee OR admin, not both
+    if (employee.isReportToAdmin) {
+      employee.reportsToId = null;
+      employee.reportsTo = null;
+    } else {
+      employee.reportsToAdminId = null;
+      employee.reportsToAdmin = null;
+    }
+
     return this.employeeRepo.save(employee);
   }
 

@@ -1,6 +1,6 @@
 import {
   IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional,
-  IsString, MaxLength, MinLength, IsPositive,
+  IsString, MaxLength, MinLength, IsPositive, ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
@@ -45,12 +45,25 @@ export class CreateEmployeeDto {
   @IsOptional()
   assignedProjectId?: number;
 
-  @ApiPropertyOptional({ description: 'ID of the employee this person reports to' })
+  @ApiPropertyOptional({ description: 'ID of the employee this person reports to (null to clear)' })
+  @Type(() => Number)
+  @IsInt({ each: false })
+  @IsPositive()
+  @ValidateIf((o) => o.reportsToId !== null && o.reportsToId !== undefined)
+  @IsOptional()
+  reportsToId?: number | null;
+
+  @ApiPropertyOptional({ description: 'Whether this employee reports to an admin (true) or employee (false)' })
+  @IsOptional()
+  isReportToAdmin?: boolean;
+
+  @ApiPropertyOptional({ description: 'ID of the admin this person reports to (null to clear)' })
   @Type(() => Number)
   @IsInt()
   @IsPositive()
+  @ValidateIf((o) => o.reportsToAdminId !== null && o.reportsToAdminId !== undefined)
   @IsOptional()
-  reportsToId?: number;
+  reportsToAdminId?: number | null;
 
   @ApiPropertyOptional({ description: 'Whether this employee is HR' })
   @IsOptional()

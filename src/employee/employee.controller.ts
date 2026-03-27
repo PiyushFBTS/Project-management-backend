@@ -1,6 +1,8 @@
-import { Controller, ForbiddenException, Get, Query, UseGuards } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Query, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Response } from 'express';
 import { EmployeeService } from './employee.service';
+import { ReportsService } from '../reports/reports.service';
 import { JwtEmployeeGuard } from '../auth/guards/jwt-employee.guard';
 import { ConsultantTypeGuard } from '../auth/guards/consultant-type.guard';
 import { ConsultantTypes } from '../auth/decorators/consultant-type.decorator';
@@ -13,7 +15,10 @@ import { TenantId } from '../common/decorators/tenant-id.decorator';
 @UseGuards(JwtEmployeeGuard)
 @Controller('employee')
 export class EmployeeController {
-  constructor(private readonly employeeService: EmployeeService) {}
+  constructor(
+    private readonly employeeService: EmployeeService,
+    private readonly reportsService: ReportsService,
+  ) {}
 
   @Get('profile')
   @ApiOperation({ summary: 'Get own profile and assigned project' })
@@ -127,5 +132,37 @@ export class EmployeeController {
   ) {
     if (!employee.isHr) throw new ForbiddenException('Only HR employees can access this report');
     return this.employeeService.getAllLastFilledReport(companyId);
+  }
+
+  @Get('reports/monthly-grid')
+  @ApiOperation({ summary: 'Monthly grid report (HR only)' })
+  getMonthlyGrid(
+    @CurrentUser() employee: Employee,
+    @TenantId() companyId: number,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ) {
+    if (!employee.isHr) throw new ForbiddenException('Only HR employees can access this report');
+    const y = parseInt(year, 10) || new Date().getFullYear();
+    const m = parseInt(month, 10) || (new Date().getMonth() + 1);
+    return this.reportsService.getMonthlyGridReport(companyId, y, m);
+  }
+
+  @Get('reports/export/monthly-grid')
+  @ApiOperation({ summary: 'Export monthly grid to Excel (HR only)' })
+  async exportMonthlyGrid(
+    @CurrentUser() employee: Employee,
+    @TenantId() companyId: number,
+    @Query('year') year: string,
+    @Query('month') month: string,
+    @Res() res: Response,
+  ) {
+    if (!employee.isHr) throw new ForbiddenException('Only HR employees can access this report');
+    const y = parseInt(year, 10) || new Date().getFullYear();
+    const m = parseInt(month, 10) || (new Date().getMonth() + 1);
+    const buffer = await this.reportsService.exportMonthlyGrid(companyId, y, m);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=monthly-grid-${y}-${String(m).padStart(2, '0')}.xlsx`);
+    res.send(buffer);
   }
 }

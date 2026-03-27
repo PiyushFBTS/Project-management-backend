@@ -68,6 +68,16 @@ export class Employee {
   @JoinColumn({ name: 'reports_to_id' })
   reportsTo: Employee;
 
+  @Column({ name: 'is_report_to_admin', default: false })
+  isReportToAdmin: boolean;
+
+  @Column({ name: 'reports_to_admin_id', nullable: true })
+  reportsToAdminId: number | null;
+
+  @ManyToOne('AdminUser', { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'reports_to_admin_id' })
+  reportsToAdmin: any;
+
   @Column({ name: 'is_hr', default: false })
   isHr: boolean;
 

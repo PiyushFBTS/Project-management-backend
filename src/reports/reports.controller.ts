@@ -91,6 +91,40 @@ export class ReportsController {
     return this.reportsService.getLastFilledReport(companyId);
   }
 
+  // ── Monthly Grid ──────────────────────────────────────────────────────────
+
+  @Get('monthly-grid')
+  @ApiOperation({ summary: 'Monthly grid report — daily hours per employee' })
+  @ApiQuery({ name: 'year', example: 2026 })
+  @ApiQuery({ name: 'month', example: 3 })
+  getMonthlyGrid(
+    @TenantId() companyId: number,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ) {
+    const y = parseInt(year, 10) || new Date().getFullYear();
+    const m = parseInt(month, 10) || (new Date().getMonth() + 1);
+    return this.reportsService.getMonthlyGridReport(companyId, y, m);
+  }
+
+  @Get('export/monthly-grid')
+  @ApiOperation({ summary: 'Export monthly grid to Excel' })
+  @ApiQuery({ name: 'year', example: 2026 })
+  @ApiQuery({ name: 'month', example: 3 })
+  async exportMonthlyGrid(
+    @TenantId() companyId: number,
+    @Query('year') year: string,
+    @Query('month') month: string,
+    @Res() res: Response,
+  ) {
+    const y = parseInt(year, 10) || new Date().getFullYear();
+    const m = parseInt(month, 10) || (new Date().getMonth() + 1);
+    const buffer = await this.reportsService.exportMonthlyGrid(companyId, y, m);
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename=monthly-grid-${y}-${String(m).padStart(2, '0')}.xlsx`);
+    res.send(buffer);
+  }
+
   // ── Exports ────────────────────────────────────────────────────────────────
 
   @Get('export/employee-wise')

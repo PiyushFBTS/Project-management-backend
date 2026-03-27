@@ -23,6 +23,7 @@ import { CreateCommentDto } from './dto/create-comment.dto';
 import { FilterTasksDto } from './dto/filter-tasks.dto';
 import { ProjectTaskHistory, TaskHistoryAction } from '../database/entities/project-task-history.entity';
 import { TicketContributor } from '../database/entities/ticket-contributor.entity';
+import { TicketAssignee } from '../database/entities/ticket-assignee.entity';
 import { TaskAttachment } from '../database/entities/task-attachment.entity';
 import * as fs from 'fs';
 import { join } from 'path';
@@ -48,6 +49,8 @@ export class ProjectPlanningService {
     private readonly contributorRepo: Repository<TicketContributor>,
     @InjectRepository(TaskAttachment)
     private readonly attachmentRepo: Repository<TaskAttachment>,
+    @InjectRepository(TicketAssignee)
+    private readonly assigneeRepo: Repository<TicketAssignee>,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -57,7 +60,7 @@ export class ProjectPlanningService {
     companyId: number,
     action: TaskHistoryAction,
     performedById: number,
-    performedByType: 'admin' | 'employee',
+    performedByType: 'admin' | 'employee' | 'client',
     performedByName: string,
     oldValue?: string | null,
     newValue?: string | null,
@@ -78,10 +81,14 @@ export class ProjectPlanningService {
   }
 
   /** Resolve performer name */
-  private async resolvePerformerName(id: number, type: 'admin' | 'employee'): Promise<string> {
+  private async resolvePerformerName(id: number, type: 'admin' | 'employee' | 'client'): Promise<string> {
     if (type === 'admin') {
       const admin = await this.adminRepo.findOne({ where: { id }, select: ['id', 'name'] });
       return admin?.name ?? 'Admin';
+    }
+    if (type === 'client') {
+      const client = await this.taskRepo.manager.findOne('ClientUser' as any, { where: { id } }) as any;
+      return client?.fullName ?? client?.full_name ?? 'Client';
     }
     const emp = await this.employeeRepo.findOne({ where: { id }, select: ['id', 'empName'] });
     return emp?.empName ?? 'Employee';
@@ -723,7 +730,9 @@ export class ProjectPlanningService {
   async getMyTasksSummary(employeeId: number, companyId: number) {
     const qb = this.taskRepo
       .createQueryBuilder('t')
-      .where('t.assignee_id = :employeeId AND t.company_id = :companyId', { employeeId, companyId });
+      .leftJoin('ticket_assignees', 'ta', 'ta.task_id = t.id AND ta.user_id = :empId AND ta.user_type = :empType', { empId: employeeId, empType: 'employee' })
+      .where('t.company_id = :companyId', { companyId })
+      .andWhere('(t.assignee_id = :employeeId OR ta.id IS NOT NULL)', { employeeId });
 
     const byStatus = await qb.clone()
       .select('t.status', 'status')
@@ -787,7 +796,9 @@ export class ProjectPlanningService {
       .createQueryBuilder('t')
       .leftJoinAndSelect('t.project', 'project')
       .leftJoinAndSelect('t.phase', 'phase')
-      .where('t.assignee_id = :employeeId AND t.company_id = :companyId', { employeeId, companyId })
+      .leftJoin('ticket_assignees', 'ta', 'ta.task_id = t.id AND ta.user_id = :empId AND ta.user_type = :empType', { empId: employeeId, empType: 'employee' })
+      .where('t.company_id = :companyId', { companyId })
+      .andWhere('(t.assignee_id = :employeeId OR ta.id IS NOT NULL)', { employeeId })
       .skip((page - 1) * limit)
       .take(limit)
       .orderBy(`t.${sort === 'sortOrder' ? 'sortOrder' : 'createdAt'}`, order.toUpperCase() as 'ASC' | 'DESC');
@@ -802,10 +813,17 @@ export class ProjectPlanningService {
   }
 
   async updateMyTaskStatus(taskId: number, employeeId: number, companyId: number, dto: UpdateTaskStatusDto) {
-    const task = await this.taskRepo.findOne({
+    let task = await this.taskRepo.findOne({
       where: { id: taskId, companyId, assigneeId: employeeId },
       relations: ['project'],
     });
+    // Also check ticket_assignees table
+    if (!task) {
+      const assignee = await this.assigneeRepo.findOne({ where: { taskId, userId: employeeId, userType: 'employee', companyId } });
+      if (assignee) {
+        task = await this.taskRepo.findOne({ where: { id: taskId, companyId }, relations: ['project'] });
+      }
+    }
     if (!task) throw new ForbiddenException('Task not found or not assigned to you');
 
     const prevStatus = task.status;
@@ -1414,5 +1432,96 @@ export class ProjectPlanningService {
     } catch { /* ignore */ }
     await this.attachmentRepo.remove(att);
     return { message: 'Attachment deleted' };
+  }
+
+  // ── Multi-Assignee Management ─────────────────────────────────────────
+
+  async getTaskAssignees(taskId: number, companyId: number) {
+    const assignees = await this.assigneeRepo.find({ where: { taskId, companyId } });
+    // Resolve names
+    const result: { id: number; userId: number; userType: string; userName: string }[] = [];
+    for (const a of assignees) {
+      let userName = 'Unknown';
+      if (a.userType === 'employee') {
+        const emp = await this.employeeRepo.findOne({ where: { id: a.userId } });
+        userName = emp?.empName ?? 'Unknown Employee';
+      } else if (a.userType === 'admin') {
+        const admin = await this.adminRepo.findOne({ where: { id: a.userId } });
+        userName = admin?.name ?? 'Unknown Admin';
+      } else if (a.userType === 'client') {
+        const client = await this.taskRepo.manager.findOne('ClientUser' as any, { where: { id: a.userId } }) as any;
+        userName = client?.fullName ?? client?.full_name ?? 'Unknown Client';
+      }
+      result.push({ id: a.id, userId: a.userId, userType: a.userType, userName });
+    }
+    return result;
+  }
+
+  async addTaskAssignee(taskId: number, companyId: number, userId: number, userType: 'employee' | 'admin' | 'client', performerId: number, performerType: 'admin' | 'employee' | 'client') {
+    await this.ensureTask(taskId, companyId);
+    // Check if already assigned
+    const existing = await this.assigneeRepo.findOne({ where: { taskId, userId, userType } });
+    if (existing) throw new BadRequestException('User is already assigned to this task');
+
+    const assignee = this.assigneeRepo.create({ taskId, userId, userType, companyId });
+    const saved = await this.assigneeRepo.save(assignee);
+
+    // Resolve name for history
+    let userName = 'Unknown';
+    if (userType === 'employee') {
+      const emp = await this.employeeRepo.findOne({ where: { id: userId } });
+      userName = emp?.empName ?? 'Unknown';
+    } else if (userType === 'admin') {
+      const admin = await this.adminRepo.findOne({ where: { id: userId } });
+      userName = admin?.name ?? 'Unknown';
+    } else {
+      const client = await this.taskRepo.manager.findOne('ClientUser' as any, { where: { id: userId } }) as any;
+      userName = client?.fullName ?? client?.full_name ?? 'Unknown';
+    }
+
+    const performerName = await this.resolvePerformerName(performerId, performerType);
+    await this.recordHistory(taskId, companyId, TaskHistoryAction.ASSIGNED, performerId, performerType, performerName, null, userName, `${performerName} assigned ${userName} (${userType})`);
+
+    // Notify if employee
+    if (userType === 'employee' && (userId !== performerId || performerType !== 'employee')) {
+      const task = await this.taskRepo.findOne({ where: { id: taskId } });
+      await this.notificationsService.create(NotificationType.TASK_ASSIGNED, 'Task Assigned', `${performerName} assigned you to task ${task?.ticketNumber}`, companyId, { taskId, projectId: task?.projectId }, userId);
+    }
+
+    return saved;
+  }
+
+  async removeTaskAssignee(taskId: number, assigneeId: number, companyId: number, performerId: number, performerType: 'admin' | 'employee' | 'client') {
+    const assignee = await this.assigneeRepo.findOne({ where: { id: assigneeId, taskId, companyId } });
+    if (!assignee) throw new NotFoundException('Assignee not found');
+
+    let userName = 'Unknown';
+    if (assignee.userType === 'employee') {
+      const emp = await this.employeeRepo.findOne({ where: { id: assignee.userId } });
+      userName = emp?.empName ?? 'Unknown';
+    } else if (assignee.userType === 'admin') {
+      const admin = await this.adminRepo.findOne({ where: { id: assignee.userId } });
+      userName = admin?.name ?? 'Unknown';
+    } else {
+      const client = await this.taskRepo.manager.findOne('ClientUser' as any, { where: { id: assignee.userId } }) as any;
+      userName = client?.fullName ?? client?.full_name ?? 'Unknown';
+    }
+
+    await this.assigneeRepo.remove(assignee);
+    const performerName = await this.resolvePerformerName(performerId, performerType);
+    await this.recordHistory(taskId, companyId, TaskHistoryAction.REASSIGNED, performerId, performerType, performerName, userName, null, `${performerName} removed ${userName} from task`);
+
+    return { message: 'Assignee removed' };
+  }
+
+  async getMyTasksForAdmin(adminId: number, companyId: number) {
+    const assigned = await this.assigneeRepo.find({ where: { userId: adminId, userType: 'admin', companyId } });
+    if (assigned.length === 0) return [];
+    const taskIds = assigned.map(a => a.taskId);
+    return this.taskRepo.find({
+      where: { id: In(taskIds), companyId },
+      relations: ['project', 'phase', 'assignee', 'assignedAdmin', 'assignedClient'],
+      order: { createdAt: 'DESC' },
+    });
   }
 }

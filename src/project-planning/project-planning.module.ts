@@ -15,12 +15,13 @@ import { Project } from '../database/entities/project.entity';
 import { Employee } from '../database/entities/employee.entity';
 import { AdminUser } from '../database/entities/admin-user.entity';
 import { TicketContributor } from '../database/entities/ticket-contributor.entity';
+import { TicketAssignee } from '../database/entities/ticket-assignee.entity';
 import { TaskAttachment } from '../database/entities/task-attachment.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([ProjectPhase, ProjectTask, ProjectTaskComment, ProjectTaskHistory, Project, Employee, AdminUser, TicketContributor, TaskAttachment]),
+    TypeOrmModule.forFeature([ProjectPhase, ProjectTask, ProjectTaskComment, ProjectTaskHistory, Project, Employee, AdminUser, TicketContributor, TicketAssignee, TaskAttachment]),
     NotificationsModule,
   ],
   providers: [ProjectPlanningService],

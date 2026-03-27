@@ -172,6 +172,123 @@ export class ReportsService {
     );
   }
 
+  // ── Monthly Grid Report ────────────────────────────────────────────────────
+
+  async getMonthlyGridReport(companyId: number, year: number, month: number) {
+    // Get all active employees
+    const employees: any[] = await this.dataSource.query(
+      `SELECT id, emp_code, emp_name, consultant_type FROM employees WHERE company_id = ? AND is_active = 1 ORDER BY emp_name`,
+      [companyId],
+    );
+
+    // Get all sheets for the month
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${new Date(year, month, 0).getDate()}`;
+
+    const sheets: any[] = await this.dataSource.query(
+      `SELECT employee_id, DATE_FORMAT(sheet_date, '%Y-%m-%d') AS sheet_date, total_hours, is_submitted
+       FROM daily_task_sheets
+       WHERE company_id = ? AND sheet_date BETWEEN ? AND ?
+       ORDER BY sheet_date`,
+      [companyId, startDate, endDate],
+    );
+
+    // Build a map: empId -> { date -> { hours, submitted } }
+    const sheetMap = new Map<number, Map<string, { hours: number; submitted: boolean }>>();
+    for (const s of sheets) {
+      if (!sheetMap.has(s.employee_id)) sheetMap.set(s.employee_id, new Map());
+      sheetMap.get(s.employee_id)!.set(s.sheet_date, {
+        hours: Number(s.total_hours || 0),
+        submitted: !!s.is_submitted,
+      });
+    }
+
+    // Build result
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const days: string[] = [];
+    for (let d = 1; d <= daysInMonth; d++) {
+      days.push(`${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+    }
+
+    const rows = employees.map((emp) => {
+      const empSheets = sheetMap.get(emp.id) || new Map();
+      const dailyData: { date: string; hours: number | null; submitted: boolean }[] = days.map((date) => {
+        const entry = empSheets.get(date);
+        return {
+          date,
+          hours: entry ? entry.hours : null,
+          submitted: entry ? entry.submitted : false,
+        };
+      });
+      const totalHours = dailyData.reduce((sum, d) => sum + (d.hours ?? 0), 0);
+      const filledDays = dailyData.filter((d) => d.hours !== null).length;
+      return {
+        employeeId: emp.id,
+        empCode: emp.emp_code,
+        empName: emp.emp_name,
+        consultantType: emp.consultant_type,
+        totalHours,
+        filledDays,
+        days: dailyData,
+      };
+    });
+
+    return { year, month, daysInMonth, days, rows };
+  }
+
+  async exportMonthlyGrid(companyId: number, year: number, month: number): Promise<Buffer> {
+    const data = await this.getMonthlyGridReport(companyId, year, month);
+
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet(`${data.year}-${String(data.month).padStart(2, '0')}`);
+
+    // Build columns: Code, Name, Type, day1, day2, ..., Total
+    const columns: { header: string; key: string; width: number }[] = [
+      { header: 'Code', key: 'empCode', width: 10 },
+      { header: 'Name', key: 'empName', width: 22 },
+      { header: 'Type', key: 'consultantType', width: 12 },
+    ];
+    for (let d = 1; d <= data.daysInMonth; d++) {
+      columns.push({ header: String(d), key: `d${d}`, width: 5 });
+    }
+    columns.push({ header: 'Total', key: 'totalHours', width: 8 });
+    columns.push({ header: 'Days', key: 'filledDays', width: 6 });
+    ws.columns = columns;
+
+    // Style header
+    ws.getRow(1).font = { bold: true };
+    ws.getRow(1).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4F46E5' } };
+    ws.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
+
+    // Add rows
+    for (const row of data.rows) {
+      const rowData: any = {
+        empCode: row.empCode,
+        empName: row.empName,
+        consultantType: row.consultantType,
+        totalHours: row.totalHours,
+        filledDays: row.filledDays,
+      };
+      for (let d = 0; d < row.days.length; d++) {
+        rowData[`d${d + 1}`] = row.days[d].hours !== null ? row.days[d].hours : '';
+      }
+      const excelRow = ws.addRow(rowData);
+      // Color cells: green if submitted, yellow if draft, empty if not filled
+      for (let d = 0; d < row.days.length; d++) {
+        const cell = excelRow.getCell(`d${d + 1}`);
+        if (row.days[d].submitted) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD1FAE5' } }; // green
+        } else if (row.days[d].hours !== null) {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEF3C7' } }; // yellow
+        } else {
+          cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFEE2E2' } }; // red
+        }
+      }
+    }
+
+    return (await wb.xlsx.writeBuffer()) as unknown as Buffer;
+  }
+
   // ── Excel exports ──────────────────────────────────────────────────────────
 
   async exportEmployeeWise(companyId: number, fromDate: string, toDate: string): Promise<Buffer> {
