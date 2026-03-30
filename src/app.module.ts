@@ -17,6 +17,7 @@ import { EmployeesModule } from './employees/employees.module';
 import { DailyTaskSheetsModule } from './daily-task-sheets/daily-task-sheets.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ReportsModule } from './reports/reports.module';
+import { ExpensesModule } from './expenses/expenses.module';
 import { EmployeeModule } from './employee/employee.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { CompaniesModule } from './companies/companies.module';
@@ -69,6 +70,7 @@ import { BirthdayNotifierModule } from './birthday-notifier/birthday-notifier.mo
     DailyTaskSheetsModule,
     DashboardModule,
     ReportsModule,
+    ExpensesModule,
     EmployeeModule,
     NotificationsModule,
     LeaveTypesModule,

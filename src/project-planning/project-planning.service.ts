@@ -663,43 +663,38 @@ export class ProjectPlanningService {
     const prevName = task.assignee?.empName ?? task.assignedAdmin?.name ?? task.assignedClient?.fullName ?? 'Unassigned';
     const performerName = await this.resolvePerformerName(performerId, performerType);
 
-    // Clear all assignment fields first
-    const clearAssignments = () => {
-      task.assigneeId = null;
-      task.assignee = null;
-      task.assignedAdminId = null;
-      task.assignedAdmin = null;
-      task.assignedClientId = null;
-      task.assignedClient = null;
+    // Helper: sync ticket_assignees table — clear all, add the new primary assignee
+    const syncAssignees = async (userId: number, userType: 'employee' | 'admin' | 'client') => {
+      await this.assigneeRepo.delete({ taskId });
+      const entry = this.assigneeRepo.create({ taskId, userId, userType, companyId });
+      await this.assigneeRepo.save(entry);
     };
 
+    // Use raw query to clear/set assignment — avoids TypeORM relation-vs-column conflict
     if (body.clientId) {
       const client = await this.taskRepo.manager.findOne('ClientUser' as any, { where: { id: body.clientId, companyId } }) as any;
       if (!client) throw new NotFoundException(`Client #${body.clientId} not found`);
-      clearAssignments();
-      task.assignedClientId = body.clientId;
-      const saved = await this.taskRepo.save(task);
-      await this.recordHistory(saved.id, companyId, TaskHistoryAction.REASSIGNED, performerId, performerType, performerName, prevName, client.fullName, `Reassigned from ${prevName} to ${client.fullName} (Client)`);
-      return saved;
+      await this.taskRepo.update(taskId, { assigneeId: null as any, assignedAdminId: null as any, assignedClientId: body.clientId });
+      await syncAssignees(body.clientId, 'client');
+      await this.recordHistory(taskId, companyId, TaskHistoryAction.REASSIGNED, performerId, performerType, performerName, prevName, client.fullName, `Reassigned from ${prevName} to ${client.fullName} (Client)`);
+      return this.ensureTask(taskId, companyId);
     } else if (body.adminId) {
       const admin = await this.adminRepo.findOne({ where: { id: body.adminId, companyId } });
       if (!admin) throw new NotFoundException(`Admin #${body.adminId} not found`);
-      clearAssignments();
-      task.assignedAdminId = body.adminId;
-      const saved = await this.taskRepo.save(task);
-      await this.recordHistory(saved.id, companyId, TaskHistoryAction.REASSIGNED, performerId, performerType, performerName, prevName, admin.name, `Reassigned from ${prevName} to ${admin.name} (Admin)`);
-      return saved;
+      await this.taskRepo.update(taskId, { assigneeId: null as any, assignedAdminId: body.adminId, assignedClientId: null as any });
+      await syncAssignees(body.adminId, 'admin');
+      await this.recordHistory(taskId, companyId, TaskHistoryAction.REASSIGNED, performerId, performerType, performerName, prevName, admin.name, `Reassigned from ${prevName} to ${admin.name} (Admin)`);
+      return this.ensureTask(taskId, companyId);
     } else if (body.employeeId) {
       const emp = await this.employeeRepo.findOne({ where: { id: body.employeeId, companyId, isActive: true } });
       if (!emp) throw new NotFoundException(`Employee #${body.employeeId} not found`);
-      clearAssignments();
-      task.assigneeId = body.employeeId;
-      const saved = await this.taskRepo.save(task);
-      await this.recordHistory(saved.id, companyId, TaskHistoryAction.REASSIGNED, performerId, performerType, performerName, prevName, emp.empName, `Reassigned from ${prevName} to ${emp.empName}`);
+      await this.taskRepo.update(taskId, { assigneeId: body.employeeId, assignedAdminId: null as any, assignedClientId: null as any });
+      await syncAssignees(body.employeeId, 'employee');
+      await this.recordHistory(taskId, companyId, TaskHistoryAction.REASSIGNED, performerId, performerType, performerName, prevName, emp.empName, `Reassigned from ${prevName} to ${emp.empName}`);
       if (body.employeeId !== performerId || performerType !== 'employee') {
-        await this.notificationsService.create(NotificationType.TASK_ASSIGNED, 'Task Reassigned', `${performerName} assigned you task ${saved.ticketNumber}`, companyId, { taskId: saved.id, projectId: saved.projectId }, body.employeeId);
+        await this.notificationsService.create(NotificationType.TASK_ASSIGNED, 'Task Reassigned', `${performerName} assigned you task ${task.ticketNumber}`, companyId, { taskId, projectId: task.projectId }, body.employeeId);
       }
-      return saved;
+      return this.ensureTask(taskId, companyId);
     }
     throw new NotFoundException('Must provide employeeId, adminId, or clientId');
   }

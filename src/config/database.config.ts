@@ -30,6 +30,7 @@ import { TaskAttachment } from '../database/entities/task-attachment.entity';
 import { EmployeeDocument } from '../database/entities/employee-document.entity';
 import { ProjectMilestone } from '../database/entities/project-milestone.entity';
 import { ProjectTypeEntity } from '../database/entities/project-type.entity';
+import { Expense } from '../database/entities/expense.entity';
 
 export const databaseConfig = (
   configService: ConfigService,
@@ -40,7 +41,7 @@ export const databaseConfig = (
   username: configService.get<string>('DB_USERNAME', 'root'),
   password: configService.get<string>('DB_PASSWORD', ''),
   database: configService.get<string>('DB_DATABASE', 'it_project_management'),
-  entities: [Company, AdminUser, Project, TaskType, Employee, DailyTaskSheet, TaskEntry, Notification, LeaveType, LeaveRequest, LeaveRequestWatcher, SmtpConfig, ProjectPhase, ProjectTask, ProjectTaskComment, ProjectTaskHistory, Country, State, City, Currency, PostalCode, EmailLog, TicketContributor, TicketAssignee, ProjectDocument, ClientUser, TaskAttachment, EmployeeDocument, ProjectMilestone, ProjectTypeEntity],
+  entities: [Company, AdminUser, Project, TaskType, Employee, DailyTaskSheet, TaskEntry, Notification, LeaveType, LeaveRequest, LeaveRequestWatcher, SmtpConfig, ProjectPhase, ProjectTask, ProjectTaskComment, ProjectTaskHistory, Country, State, City, Currency, PostalCode, EmailLog, TicketContributor, TicketAssignee, ProjectDocument, ClientUser, TaskAttachment, EmployeeDocument, ProjectMilestone, ProjectTypeEntity, Expense],
   // NEVER set synchronize: true in production — use migrations instead
   synchronize: configService.get<string>('DB_SYNCHRONIZE') === 'true',
   logging: configService.get<string>('DB_LOGGING') === 'true',
