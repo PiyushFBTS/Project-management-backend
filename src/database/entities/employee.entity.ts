@@ -81,6 +81,9 @@ export class Employee {
   @Column({ name: 'is_hr', default: false })
   isHr: boolean;
 
+  @Column({ name: 'fill_days_override', type: 'int', nullable: true, default: null })
+  fillDaysOverride: number | null;
+
   @Column({ name: 'date_of_birth', type: 'date', nullable: true })
   dateOfBirth: string | null;
 

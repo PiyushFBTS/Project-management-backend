@@ -275,12 +275,14 @@ export class ProjectPlanningService {
       .where('t.project_id = :projectId', { projectId })
       .getRawOne();
 
-    // Generate ticket number: PROJCODE-001
-    const taskCount = await this.taskRepo
+    // Generate ticket number: PROJCODE-001 (use max existing number, not count)
+    const maxTicket = await this.taskRepo
       .createQueryBuilder('t')
+      .select(`MAX(CAST(SUBSTRING(t.ticket_number, ${project.projectCode.length + 2}) AS UNSIGNED))`, 'maxNum')
       .where('t.project_id = :projectId', { projectId })
-      .getCount();
-    const seq = String(taskCount + 1).padStart(3, '0');
+      .getRawOne();
+    const nextNum = (parseInt(maxTicket?.maxNum || '0', 10) || 0) + 1;
+    const seq = String(nextNum).padStart(3, '0');
     const ticketNumber = `${project.projectCode}-${seq}`;
 
     const task = this.taskRepo.create({

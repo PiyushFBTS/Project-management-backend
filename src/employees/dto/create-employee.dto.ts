@@ -78,4 +78,10 @@ export class CreateEmployeeDto {
   @IsString()
   @IsOptional()
   joiningDate?: string;
+
+  @ApiPropertyOptional({ example: 7, description: 'Special permission: how many days back the employee can fill task sheets (null = default 3)' })
+  @Type(() => Number)
+  @IsInt()
+  @IsOptional()
+  fillDaysOverride?: number | null;
 }

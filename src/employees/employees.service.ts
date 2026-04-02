@@ -175,6 +175,12 @@ export class EmployeesService {
     return this.employeeRepo.save(employee);
   }
 
+  async setFillDaysOverride(id: number, companyId: number, days: number | null) {
+    const employee = await this.findOne(id, companyId);
+    employee.fillDaysOverride = days;
+    return this.employeeRepo.save(employee);
+  }
+
   async remove(id: number, companyId: number) {
     const employee = await this.findOne(id, companyId);
     employee.isActive = false;

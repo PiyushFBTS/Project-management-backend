@@ -123,7 +123,7 @@ export class DailyTaskSheetsService {
 
   async addEntry(sheetId: number, employeeId: number, companyId: number, dto: CreateEntryDto): Promise<TaskEntry> {
     const sheet = await this.getById(sheetId, employeeId);
-    this.assertEditable(sheet);
+    await this.assertEditable(sheet, employeeId);
     this.assertTimeOrder(dto.fromTime, dto.toTime);
 
     const entry = await this.entryRepo.save(
@@ -140,7 +140,7 @@ export class DailyTaskSheetsService {
     dto: UpdateEntryDto,
   ): Promise<TaskEntry> {
     const sheet = await this.getById(sheetId, employeeId);
-    this.assertEditable(sheet);
+    await this.assertEditable(sheet, employeeId);
 
     const entry = await this.entryRepo.findOne({ where: { id: entryId, taskSheetId: sheetId } });
     if (!entry) throw new NotFoundException(`Entry #${entryId} not found in sheet #${sheetId}`);
@@ -157,7 +157,7 @@ export class DailyTaskSheetsService {
 
   async deleteEntry(sheetId: number, entryId: number, employeeId: number) {
     const sheet = await this.getById(sheetId, employeeId);
-    this.assertEditable(sheet);
+    await this.assertEditable(sheet, employeeId);
 
     const entry = await this.entryRepo.findOne({ where: { id: entryId, taskSheetId: sheetId } });
     if (!entry) throw new NotFoundException(`Entry #${entryId} not found in sheet #${sheetId}`);
@@ -201,13 +201,26 @@ export class DailyTaskSheetsService {
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
   /** Allow edits on sheets from today and the previous 2 days; block older sheets. */
-  private assertEditable(sheet: DailyTaskSheet) {
+  private async assertEditable(sheet: DailyTaskSheet, employeeId?: number) {
     const sheetDate = new Date(sheet.sheetDate);
+    let maxDays = 3; // default: today + 2 previous days
+
+    // Check if employee has a special fill_days_override
+    if (employeeId) {
+      const row = await this.dataSource.query(
+        'SELECT fill_days_override FROM employees WHERE id = ? LIMIT 1',
+        [employeeId],
+      );
+      if (row?.[0]?.fill_days_override != null) {
+        maxDays = Number(row[0].fill_days_override);
+      }
+    }
+
     const cutoff = new Date();
-    cutoff.setDate(cutoff.getDate() - 2);
+    cutoff.setDate(cutoff.getDate() - maxDays);
     cutoff.setHours(0, 0, 0, 0);
     if (sheetDate < cutoff) {
-      throw new ForbiddenException('Cannot modify a task sheet older than 2 days');
+      throw new ForbiddenException(`Cannot modify a task sheet older than ${maxDays} days`);
     }
   }
 

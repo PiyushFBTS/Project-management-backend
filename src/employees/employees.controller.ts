@@ -208,6 +208,16 @@ export class EmployeesController {
     return this.employeesService.remove(id, companyId);
   }
 
+  @Patch(':id/fill-days')
+  @ApiOperation({ summary: 'Set special fill days override for an employee (null to reset to default)' })
+  setFillDays(
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { fillDaysOverride: number | null },
+  ) {
+    return this.employeesService.setFillDaysOverride(id, companyId, body.fillDaysOverride);
+  }
+
   @Patch(':id/assign')
   @ApiOperation({ summary: 'Assign employee to a project (or unassign with null)' })
   assignProject(
