@@ -163,6 +163,7 @@ export class ExpensesService {
     expense.approvedByName = adminName ?? null;
     expense.approvedAt = new Date();
     if (dto.remarks) expense.remarks = dto.remarks;
+    if (dto.approvedAmount !== undefined) expense.approvedAmount = dto.approvedAmount;
 
     return this.expenseRepo.save(expense);
   }

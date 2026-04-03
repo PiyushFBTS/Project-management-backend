@@ -9,7 +9,7 @@ import {
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ProjectStatus, ProjectType } from '../../database/entities/project.entity';
+import { ProjectStatus } from '../../database/entities/project.entity';
 
 export class CreateProjectDto {
   @ApiProperty({ example: 'PRJ-002' })
@@ -24,9 +24,10 @@ export class CreateProjectDto {
   @MaxLength(200)
   projectName: string;
 
-  @ApiProperty({ enum: ProjectType })
-  @IsEnum(ProjectType)
-  projectType: ProjectType;
+  @ApiProperty({ example: 'development' })
+  @IsString()
+  @IsNotEmpty()
+  projectType: string;
 
   @ApiPropertyOptional()
   @IsString()

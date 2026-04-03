@@ -57,6 +57,9 @@ export class Expense {
   @Column({ name: 'approved_by_name', length: 255, nullable: true })
   approvedByName: string | null;
 
+  @Column({ name: 'approved_amount', type: 'decimal', precision: 12, scale: 2, nullable: true })
+  approvedAmount: number | null;
+
   @Column({ name: 'approved_at', type: 'timestamp', nullable: true })
   approvedAt: Date | null;
 

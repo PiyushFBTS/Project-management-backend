@@ -1,7 +1,7 @@
 import { IsEnum, IsOptional, IsString } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PaginationDto } from '../../common/dto/pagination.dto';
-import { ProjectStatus, ProjectType } from '../../database/entities/project.entity';
+import { ProjectStatus } from '../../database/entities/project.entity';
 
 export class FilterProjectDto extends PaginationDto {
   @ApiPropertyOptional()
@@ -9,10 +9,10 @@ export class FilterProjectDto extends PaginationDto {
   @IsOptional()
   search?: string;
 
-  @ApiPropertyOptional({ enum: ProjectType })
-  @IsEnum(ProjectType)
+  @ApiPropertyOptional()
+  @IsString()
   @IsOptional()
-  projectType?: ProjectType;
+  projectType?: string;
 
   @ApiPropertyOptional({ enum: ProjectStatus })
   @IsEnum(ProjectStatus)

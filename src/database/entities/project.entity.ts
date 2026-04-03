@@ -16,14 +16,8 @@ import { TaskEntry } from './task-entry.entity';
 import { ProjectPhase } from './project-phase.entity';
 import { ProjectTask } from './project-task.entity';
 
-export enum ProjectType {
-  PROJECT = 'project',
-  SUPPORT = 'support',
-  DEVELOPMENT = 'development',
-  CONSULTING = 'consulting',
-  MIGRATION = 'migration',
-  MAINTENANCE = 'maintenance',
-}
+// Project type is now a dynamic string (managed via project_types table)
+// Kept as reference for legacy values: project, support, development, consulting, migration, maintenance
 
 export enum ProjectStatus {
   ACTIVE = 'active',
@@ -42,8 +36,8 @@ export class Project {
   @Column({ name: 'project_name', length: 200 })
   projectName: string;
 
-  @Column({ name: 'project_type', type: 'enum', enum: ProjectType })
-  projectType: ProjectType;
+  @Column({ name: 'project_type', length: 100 })
+  projectType: string;
 
   @Column({
     type: 'enum',

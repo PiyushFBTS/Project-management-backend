@@ -16,7 +16,7 @@ import * as bcrypt from 'bcrypt';
 import { AppDataSource } from '../data-source';
 import { Company, SubscriptionPlan } from '../entities/company.entity';
 import { AdminUser, AdminRole } from '../entities/admin-user.entity';
-import { Project, ProjectType, ProjectStatus } from '../entities/project.entity';
+import { Project, ProjectStatus } from '../entities/project.entity';
 import { TaskType, TaskCategory } from '../entities/task-type.entity';
 import { Employee, ConsultantType } from '../entities/employee.entity';
 import { DailyTaskSheet } from '../entities/daily-task-sheet.entity';
@@ -144,7 +144,7 @@ async function seedProjects(companyId: number): Promise<Project[]> {
     {
       projectCode: 'PRJ-001',
       projectName: 'ERP Implementation',
-      projectType: ProjectType.PROJECT,
+      projectType: 'project',
       status: ProjectStatus.ACTIVE,
       description: 'Full ERP system implementation for client A',
       companyId,
@@ -152,7 +152,7 @@ async function seedProjects(companyId: number): Promise<Project[]> {
     {
       projectCode: 'SUP-001',
       projectName: 'Production Support',
-      projectType: ProjectType.SUPPORT,
+      projectType: 'support',
       status: ProjectStatus.ACTIVE,
       description: 'Ongoing production support and maintenance',
       companyId,
@@ -160,7 +160,7 @@ async function seedProjects(companyId: number): Promise<Project[]> {
     {
       projectCode: 'PRJ-002',
       projectName: 'CRM Migration',
-      projectType: ProjectType.PROJECT,
+      projectType: 'project',
       status: ProjectStatus.ACTIVE,
       description: 'Salesforce to in-house CRM migration project',
       companyId,
@@ -168,7 +168,7 @@ async function seedProjects(companyId: number): Promise<Project[]> {
     {
       projectCode: 'PRJ-003',
       projectName: 'Mobile App Development',
-      projectType: ProjectType.PROJECT,
+      projectType: 'project',
       status: ProjectStatus.ACTIVE,
       description: 'iOS and Android mobile application for client portal',
       companyId,

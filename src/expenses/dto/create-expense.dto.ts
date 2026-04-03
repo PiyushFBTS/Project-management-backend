@@ -39,6 +39,11 @@ export class UpdateExpenseStatusDto {
   @IsString()
   status: 'approved' | 'rejected';
 
+  @ApiPropertyOptional({ description: 'Approved amount (can differ from requested)' })
+  @Type(() => Number)
+  @IsOptional()
+  approvedAmount?: number;
+
   @ApiPropertyOptional()
   @IsString()
   @IsOptional()

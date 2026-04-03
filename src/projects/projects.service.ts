@@ -113,9 +113,8 @@ export class ProjectsService {
 
   async remove(id: number, companyId: number) {
     const project = await this.findOne(id, companyId);
-    project.status = ProjectStatus.INACTIVE;
-    await this.projectRepo.save(project);
-    return { message: `Project #${id} deactivated successfully` };
+    await this.projectRepo.remove(project);
+    return { message: `Project #${id} deleted successfully` };
   }
 
   async findByEmployeeTickets(companyId: number, employeeId: number) {
