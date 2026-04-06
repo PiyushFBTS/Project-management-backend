@@ -172,6 +172,59 @@ export class ReportsService {
     );
   }
 
+  // ── Employee Cost Report ───────────────────────────────────────────────────
+
+  async getEmployeeCostReport(companyId: number, fromDate: string, toDate: string) {
+    // Employee cost per project
+    const employeeCosts: any[] = await this.dataSource.query(
+      `SELECT
+         e.id AS employee_id, e.emp_code, e.emp_name, e.consultant_type, e.monthly_ctc,
+         ROUND(e.monthly_ctc / 26, 2) AS daily_rate,
+         p.id AS project_id, p.project_code, p.project_name,
+         ROUND(SUM(te.duration_hours) / 8, 2) AS man_days,
+         SUM(te.duration_hours) AS total_hours,
+         ROUND((e.monthly_ctc / 26) * (SUM(te.duration_hours) / 8), 2) AS cost
+       FROM task_entries te
+       JOIN daily_task_sheets ds ON ds.id = te.task_sheet_id
+       JOIN employees e ON e.id = ds.employee_id
+       LEFT JOIN projects p ON p.id = te.project_id
+       WHERE ds.company_id = ? AND ds.sheet_date BETWEEN ? AND ?
+         AND e.monthly_ctc IS NOT NULL AND e.monthly_ctc > 0
+       GROUP BY e.id, p.id
+       ORDER BY e.emp_name, cost DESC`,
+      [companyId, fromDate, toDate],
+    );
+
+    // Project profitability
+    const projectProfitability: any[] = await this.dataSource.query(
+      `SELECT
+         p.id, p.project_code, p.project_name, p.project_budget,
+         COALESCE(SUM(ms.expected_amount), 0) AS milestone_total,
+         COALESCE(SUM(ms.received_amount), 0) AS milestone_received,
+         COALESCE(MAX(ec.total_cost), 0) AS employee_cost,
+         COALESCE(SUM(ms.received_amount), 0) - COALESCE(MAX(ec.total_cost), 0) AS profit
+       FROM projects p
+       LEFT JOIN project_milestones ms ON ms.project_id = p.id
+       LEFT JOIN (
+         SELECT te2.project_id,
+           ROUND(SUM((e2.monthly_ctc / 26) * (te2.duration_hours / 8)), 2) AS total_cost
+         FROM task_entries te2
+         JOIN daily_task_sheets ds2 ON ds2.id = te2.task_sheet_id
+         JOIN employees e2 ON e2.id = ds2.employee_id
+         WHERE ds2.company_id = ? AND ds2.sheet_date BETWEEN ? AND ?
+           AND e2.monthly_ctc IS NOT NULL AND e2.monthly_ctc > 0
+         GROUP BY te2.project_id
+       ) ec ON ec.project_id = p.id
+       WHERE p.company_id = ?
+       GROUP BY p.id, p.project_code, p.project_name, p.project_budget
+       HAVING milestone_total > 0 OR employee_cost > 0
+       ORDER BY profit DESC`,
+      [companyId, fromDate, toDate, companyId],
+    );
+
+    return { employeeCosts, projectProfitability };
+  }
+
   // ── Monthly Grid Report ────────────────────────────────────────────────────
 
   async getMonthlyGridReport(companyId: number, year: number, month: number) {

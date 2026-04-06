@@ -91,6 +91,22 @@ export class ReportsController {
     return this.reportsService.getLastFilledReport(companyId);
   }
 
+  // ── Employee Cost / Project Profitability ─────────────────────────────────
+
+  @Get('employee-cost')
+  @ApiOperation({ summary: 'Employee cost per project and project profitability' })
+  @ApiQuery({ name: 'from_date', example: '2026-03-01' })
+  @ApiQuery({ name: 'to_date', example: '2026-03-31' })
+  getEmployeeCost(
+    @TenantId() companyId: number,
+    @Query('from_date') fromDate: string,
+    @Query('to_date') toDate: string,
+  ) {
+    const from = fromDate || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0];
+    const to = toDate || new Date().toISOString().split('T')[0];
+    return this.reportsService.getEmployeeCostReport(companyId, from, to);
+  }
+
   // ── Monthly Grid ──────────────────────────────────────────────────────────
 
   @Get('monthly-grid')

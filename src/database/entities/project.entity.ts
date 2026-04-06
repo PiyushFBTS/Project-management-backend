@@ -58,6 +58,9 @@ export class Project {
   @Column({ type: 'text', nullable: true })
   description: string;
 
+  @Column({ name: 'project_budget', type: 'decimal', precision: 14, scale: 2, nullable: true, default: null })
+  projectBudget: number | null;
+
   @Column({ name: 'project_manager_id', nullable: true })
   projectManagerId: number;
 

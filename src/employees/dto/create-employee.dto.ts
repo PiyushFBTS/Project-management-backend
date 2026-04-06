@@ -84,4 +84,9 @@ export class CreateEmployeeDto {
   @IsInt()
   @IsOptional()
   fillDaysOverride?: number | null;
+
+  @ApiPropertyOptional({ example: 50000, description: 'Monthly CTC (Cost to Company)' })
+  @Type(() => Number)
+  @IsOptional()
+  monthlyCTC?: number | null;
 }

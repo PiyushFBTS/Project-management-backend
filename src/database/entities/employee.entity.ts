@@ -84,6 +84,9 @@ export class Employee {
   @Column({ name: 'fill_days_override', type: 'int', nullable: true, default: null })
   fillDaysOverride: number | null;
 
+  @Column({ name: 'monthly_ctc', type: 'decimal', precision: 12, scale: 2, nullable: true, default: null })
+  monthlyCTC: number | null;
+
   @Column({ name: 'date_of_birth', type: 'date', nullable: true })
   dateOfBirth: string | null;
 
