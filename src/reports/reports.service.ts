@@ -178,18 +178,19 @@ export class ReportsService {
     // Employee cost per project
     const employeeCosts: any[] = await this.dataSource.query(
       `SELECT
-         e.id AS employee_id, e.emp_code, e.emp_name, e.consultant_type, e.monthly_ctc,
-         ROUND(e.monthly_ctc / 26, 2) AS daily_rate,
+         e.id AS employee_id, e.emp_code, e.emp_name, e.consultant_type, e.annual_ctc,
+         ROUND(e.annual_ctc / 12, 2) AS monthly_ctc,
+         ROUND((e.annual_ctc / 12) / 26, 2) AS daily_rate,
          p.id AS project_id, p.project_code, p.project_name,
          ROUND(SUM(te.duration_hours) / 8, 2) AS man_days,
          SUM(te.duration_hours) AS total_hours,
-         ROUND((e.monthly_ctc / 26) * (SUM(te.duration_hours) / 8), 2) AS cost
+         ROUND(((e.annual_ctc / 12) / 26) * (SUM(te.duration_hours) / 8), 2) AS cost
        FROM task_entries te
        JOIN daily_task_sheets ds ON ds.id = te.task_sheet_id
        JOIN employees e ON e.id = ds.employee_id
        LEFT JOIN projects p ON p.id = te.project_id
        WHERE ds.company_id = ? AND ds.sheet_date BETWEEN ? AND ?
-         AND e.monthly_ctc IS NOT NULL AND e.monthly_ctc > 0
+         AND e.annual_ctc IS NOT NULL AND e.annual_ctc > 0
        GROUP BY e.id, p.id
        ORDER BY e.emp_name, cost DESC`,
       [companyId, fromDate, toDate],
@@ -207,12 +208,12 @@ export class ReportsService {
        LEFT JOIN project_milestones ms ON ms.project_id = p.id
        LEFT JOIN (
          SELECT te2.project_id,
-           ROUND(SUM((e2.monthly_ctc / 26) * (te2.duration_hours / 8)), 2) AS total_cost
+           ROUND(SUM(((e2.annual_ctc / 12) / 26) * (te2.duration_hours / 8)), 2) AS total_cost
          FROM task_entries te2
          JOIN daily_task_sheets ds2 ON ds2.id = te2.task_sheet_id
          JOIN employees e2 ON e2.id = ds2.employee_id
          WHERE ds2.company_id = ? AND ds2.sheet_date BETWEEN ? AND ?
-           AND e2.monthly_ctc IS NOT NULL AND e2.monthly_ctc > 0
+           AND e2.annual_ctc IS NOT NULL AND e2.annual_ctc > 0
          GROUP BY te2.project_id
        ) ec ON ec.project_id = p.id
        WHERE p.company_id = ?

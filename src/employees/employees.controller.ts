@@ -139,6 +139,44 @@ export class EmployeeColleaguesController {
     return this.employeesService.deleteDocument(docId, companyId);
   }
 
+  // ── Praises (employee/HR) ──
+  @Get(':id/praises')
+  @ApiOperation({ summary: 'Get praises for an employee' })
+  getEmpPraises(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.employeesService.getPraises(id, companyId);
+  }
+
+  @Post(':id/praises')
+  @ApiOperation({ summary: 'Give praise (HR only)' })
+  giveEmpPraise(
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('id') empId: number,
+    @CurrentUser('empName') empName: string,
+    @Body() body: { praiseType: string; description?: string },
+  ) {
+    return this.employeesService.givePraise(id, companyId, empId, 'employee', empName ?? 'HR', body.praiseType, body.description);
+  }
+
+  // ── PIP (employee view) ──
+  @Get(':id/pips')
+  @ApiOperation({ summary: 'Get PIPs for an employee (employee access)' })
+  getEmpPips(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.employeesService.getPips(id, companyId);
+  }
+
+  @Patch('pips/:pipId/acknowledge')
+  @ApiOperation({ summary: 'Employee acknowledges a PIP' })
+  acknowledgePip(
+    @TenantId() companyId: number,
+    @Param('pipId', ParseIntPipe) pipId: number,
+    @CurrentUser('id') empId: number,
+    @CurrentUser('empName') empName: string,
+    @Body() body: { note?: string },
+  ) {
+    return this.employeesService.acknowledgePip(pipId, companyId, empId, empName ?? 'Employee', body.note);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a colleague by ID (read-only)' })
   findOne(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
@@ -216,6 +254,77 @@ export class EmployeesController {
     @Body() body: { fillDaysOverride: number | null },
   ) {
     return this.employeesService.setFillDaysOverride(id, companyId, body.fillDaysOverride);
+  }
+
+  @Get(':id/praises')
+  @ApiOperation({ summary: 'Get praises for an employee' })
+  getPraises(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.employeesService.getPraises(id, companyId);
+  }
+
+  @Post(':id/praises')
+  @ApiOperation({ summary: 'Give praise to an employee' })
+  givePraise(
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('id') adminId: number,
+    @CurrentUser('name') adminName: string,
+    @Body() body: { praiseType: string; description?: string },
+  ) {
+    return this.employeesService.givePraise(id, companyId, adminId, 'admin', adminName, body.praiseType, body.description);
+  }
+
+  @Delete('praises/:praiseId')
+  @ApiOperation({ summary: 'Remove a praise' })
+  removePraise(@TenantId() companyId: number, @Param('praiseId', ParseIntPipe) praiseId: number) {
+    return this.employeesService.removePraise(praiseId, companyId);
+  }
+
+  // ── PIP (Performance Improvement Plan) ──
+  @Get(':id/pips')
+  @ApiOperation({ summary: 'Get PIPs for an employee' })
+  getPips(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.employeesService.getPips(id, companyId);
+  }
+
+  @Post(':id/pips')
+  @ApiOperation({ summary: 'Create a PIP for an employee' })
+  createPip(
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('id') adminId: number,
+    @CurrentUser('name') adminName: string,
+    @Body() body: { reason: string; improvementAreas: string; startDate: string; endDate: string; goals?: string },
+  ) {
+    return this.employeesService.createPip(id, companyId, adminId, 'admin', adminName, body);
+  }
+
+  @Patch('pips/:pipId')
+  @ApiOperation({ summary: 'Update a PIP (status, review, extend)' })
+  updatePip(
+    @TenantId() companyId: number,
+    @Param('pipId', ParseIntPipe) pipId: number,
+    @Body() body: { status?: 'active' | 'extended' | 'completed' | 'terminated'; outcome?: string; reviewNotes?: string; endDate?: string },
+  ) {
+    return this.employeesService.updatePip(pipId, companyId, body);
+  }
+
+  @Delete('pips/:pipId')
+  @ApiOperation({ summary: 'Delete a PIP' })
+  deletePip(@TenantId() companyId: number, @Param('pipId', ParseIntPipe) pipId: number) {
+    return this.employeesService.deletePip(pipId, companyId);
+  }
+
+  @Patch(':id/toggle-active')
+  @ApiOperation({ summary: 'Toggle employee active/inactive status' })
+  toggleActive(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.employeesService.toggleActive(id, companyId);
+  }
+
+  @Patch(':id/reset-password')
+  @ApiOperation({ summary: 'Reset employee password to a default value' })
+  resetPassword(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number, @Body() body: { newPassword: string }) {
+    return this.employeesService.resetPassword(id, companyId, body.newPassword);
   }
 
   @Patch(':id/assign')

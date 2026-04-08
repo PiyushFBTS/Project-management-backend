@@ -84,8 +84,14 @@ export class Employee {
   @Column({ name: 'fill_days_override', type: 'int', nullable: true, default: null })
   fillDaysOverride: number | null;
 
-  @Column({ name: 'monthly_ctc', type: 'decimal', precision: 12, scale: 2, nullable: true, default: null })
-  monthlyCTC: number | null;
+  @Column({ name: 'annual_ctc', type: 'decimal', precision: 14, scale: 2, nullable: true, default: null })
+  annualCTC: number | null;
+
+  @Column({ name: 'blood_group', length: 10, nullable: true })
+  bloodGroup: string | null;
+
+  @Column({ name: 'marital_status', length: 20, nullable: true })
+  maritalStatus: string | null;
 
   @Column({ name: 'date_of_birth', type: 'date', nullable: true })
   dateOfBirth: string | null;

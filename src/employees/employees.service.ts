@@ -8,6 +8,8 @@ import { Employee, ConsultantType } from '../database/entities/employee.entity';
 import { Company } from '../database/entities/company.entity';
 import { AdminUser } from '../database/entities/admin-user.entity';
 import { EmployeeDocument, EmployeeDocCategory } from '../database/entities/employee-document.entity';
+import { EmployeePraise } from '../database/entities/employee-praise.entity';
+import { EmployeePip } from '../database/entities/employee-pip.entity';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { UpdateEmployeeSelfDto } from './dto/update-employee-self.dto';
@@ -29,6 +31,10 @@ export class EmployeesService {
     private readonly adminRepo: Repository<AdminUser>,
     @InjectRepository(EmployeeDocument)
     private readonly empDocRepo: Repository<EmployeeDocument>,
+    @InjectRepository(EmployeePraise)
+    private readonly praiseRepo: Repository<EmployeePraise>,
+    @InjectRepository(EmployeePip)
+    private readonly pipRepo: Repository<EmployeePip>,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -195,6 +201,97 @@ export class EmployeesService {
     );
 
     return { message: `Employee #${id} deactivated successfully` };
+  }
+
+  // ── Praises ──────────────────────────────────────────────────────────────
+
+  async getPraises(employeeId: number, companyId: number) {
+    return this.praiseRepo.find({ where: { employeeId, companyId }, order: { createdAt: 'DESC' } });
+  }
+
+  async givePraise(employeeId: number, companyId: number, givenById: number, givenByType: 'admin' | 'employee', givenByName: string, praiseType: string, description?: string) {
+    const praise = this.praiseRepo.create({ employeeId, companyId, givenById, givenByType, givenByName, praiseType, description: description ?? null });
+    return this.praiseRepo.save(praise);
+  }
+
+  async removePraise(praiseId: number, companyId: number) {
+    const praise = await this.praiseRepo.findOne({ where: { id: praiseId, companyId } });
+    if (!praise) throw new NotFoundException('Praise not found');
+    await this.praiseRepo.remove(praise);
+    return { message: 'Praise removed' };
+  }
+
+  // ── PIP (Performance Improvement Plan) ───────────────────────────────────
+
+  async getPips(employeeId: number, companyId: number) {
+    return this.pipRepo.find({ where: { employeeId, companyId }, order: { createdAt: 'DESC' } });
+  }
+
+  async createPip(employeeId: number, companyId: number, initiatedById: number, initiatedByType: 'admin' | 'employee', initiatedByName: string, dto: {
+    reason: string; improvementAreas: string; startDate: string; endDate: string; goals?: string;
+  }) {
+    const pip = this.pipRepo.create({
+      employeeId, companyId, initiatedById, initiatedByType, initiatedByName,
+      reason: dto.reason, improvementAreas: dto.improvementAreas,
+      startDate: dto.startDate, endDate: dto.endDate, goals: dto.goals ?? null,
+    });
+    const saved = await this.pipRepo.save(pip);
+
+    // Send notification to the employee
+    await this.notificationsService.create(
+      NotificationType.TASK_STATUS_CHANGED,
+      'Performance Improvement Plan',
+      `A PIP has been initiated for you by ${initiatedByName}. Reason: ${dto.reason.slice(0, 100)}`,
+      companyId,
+      { pipId: saved.id },
+      employeeId,
+    );
+
+    return saved;
+  }
+
+  async updatePip(pipId: number, companyId: number, dto: {
+    status?: 'active' | 'extended' | 'completed' | 'terminated';
+    outcome?: string; reviewNotes?: string; endDate?: string;
+  }) {
+    const pip = await this.pipRepo.findOne({ where: { id: pipId, companyId } });
+    if (!pip) throw new NotFoundException('PIP not found');
+    if (dto.status) pip.status = dto.status;
+    if (dto.outcome !== undefined) pip.outcome = dto.outcome;
+    if (dto.reviewNotes !== undefined) pip.reviewNotes = dto.reviewNotes;
+    if (dto.endDate) pip.endDate = dto.endDate;
+    return this.pipRepo.save(pip);
+  }
+
+  async acknowledgePip(pipId: number, companyId: number, empId: number, empName: string, note?: string) {
+    const pip = await this.pipRepo.findOne({ where: { id: pipId, companyId } });
+    if (!pip) throw new NotFoundException('PIP not found');
+    if (pip.employeeId !== empId) throw new ForbiddenException('You can only acknowledge your own PIP');
+    const ackText = `Acknowledged by ${empName} on ${new Date().toISOString().split('T')[0]}${note ? ': ' + note : ''}`;
+    pip.reviewNotes = (pip.reviewNotes ? pip.reviewNotes + '\n' : '') + ackText;
+    return this.pipRepo.save(pip);
+  }
+
+  async deletePip(pipId: number, companyId: number) {
+    const pip = await this.pipRepo.findOne({ where: { id: pipId, companyId } });
+    if (!pip) throw new NotFoundException('PIP not found');
+    await this.pipRepo.remove(pip);
+    return { message: 'PIP removed' };
+  }
+
+  async toggleActive(id: number, companyId: number) {
+    const employee = await this.findOne(id, companyId);
+    employee.isActive = !employee.isActive;
+    await this.employeeRepo.save(employee);
+    return { message: `Employee #${id} ${employee.isActive ? 'activated' : 'deactivated'}`, isActive: employee.isActive };
+  }
+
+  async resetPassword(id: number, companyId: number, newPassword: string) {
+    const employee = await this.findOne(id, companyId);
+    const bcrypt = await import('bcrypt');
+    employee.passwordHash = await bcrypt.hash(newPassword, 10);
+    await this.employeeRepo.save(employee);
+    return { message: `Password reset for employee #${id}` };
   }
 
   async assignProject(id: number, companyId: number, dto: AssignProjectDto) {

@@ -85,8 +85,18 @@ export class CreateEmployeeDto {
   @IsOptional()
   fillDaysOverride?: number | null;
 
-  @ApiPropertyOptional({ example: 50000, description: 'Monthly CTC (Cost to Company)' })
+  @ApiPropertyOptional({ example: 600000, description: 'Annual CTC (Cost to Company)' })
   @Type(() => Number)
   @IsOptional()
-  monthlyCTC?: number | null;
+  annualCTC?: number | null;
+
+  @ApiPropertyOptional({ example: 'O+', description: 'Blood group' })
+  @IsString()
+  @IsOptional()
+  bloodGroup?: string;
+
+  @ApiPropertyOptional({ example: 'Single', description: 'Marital status' })
+  @IsString()
+  @IsOptional()
+  maritalStatus?: string;
 }
