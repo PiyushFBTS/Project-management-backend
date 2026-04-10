@@ -63,30 +63,49 @@ export class ReportsService {
   // ── Project-wise man-day report ────────────────────────────────────────────
 
   async getProjectWiseReport(companyId: number, month: string) {
+    // Query directly from base tables to avoid dependency on view's company_id column
     return this.dataSource.query(
       `SELECT
-         project_id, project_code, project_name, project_type,
-         SUM(CASE WHEN consultant_type = 'project_manager' THEN total_man_days ELSE 0 END) AS pm_man_days,
-         SUM(CASE WHEN consultant_type = 'functional'      THEN total_man_days ELSE 0 END) AS functional_man_days,
-         SUM(CASE WHEN consultant_type = 'technical'       THEN total_man_days ELSE 0 END) AS technical_man_days,
-         SUM(CASE WHEN consultant_type = 'management'      THEN total_man_days ELSE 0 END) AS management_man_days,
-         SUM(CASE WHEN consultant_type = 'core_team'       THEN total_man_days ELSE 0 END) AS core_team_man_days,
-         SUM(total_man_days)   AS total_man_days,
-         SUM(employee_count)   AS employee_count
-       FROM vw_project_man_days
-       WHERE month = ? AND company_id = ?
-       GROUP BY project_id, project_code, project_name, project_type
+         p.id                                        AS project_id,
+         p.project_code                              AS project_code,
+         p.project_name                              AS project_name,
+         p.project_type                              AS project_type,
+         ROUND(SUM(CASE WHEN e.consultant_type = 'project_manager' THEN te.duration_hours ELSE 0 END) / 8, 2) AS pm_man_days,
+         ROUND(SUM(CASE WHEN e.consultant_type = 'functional'      THEN te.duration_hours ELSE 0 END) / 8, 2) AS functional_man_days,
+         ROUND(SUM(CASE WHEN e.consultant_type = 'technical'       THEN te.duration_hours ELSE 0 END) / 8, 2) AS technical_man_days,
+         ROUND(SUM(CASE WHEN e.consultant_type = 'management'      THEN te.duration_hours ELSE 0 END) / 8, 2) AS management_man_days,
+         ROUND(SUM(CASE WHEN e.consultant_type = 'core_team'       THEN te.duration_hours ELSE 0 END) / 8, 2) AS core_team_man_days,
+         ROUND(SUM(te.duration_hours) / 8, 2)        AS total_man_days,
+         COUNT(DISTINCT e.id)                        AS employee_count
+       FROM projects p
+         JOIN task_entries te       ON te.project_id = p.id
+         JOIN daily_task_sheets dts ON dts.id = te.task_sheet_id
+         JOIN employees e           ON e.id = dts.employee_id
+       WHERE p.company_id = ?
+         AND dts.is_submitted = TRUE
+         AND DATE_FORMAT(dts.sheet_date, '%Y-%m') = ?
+       GROUP BY p.id, p.project_code, p.project_name, p.project_type
        ORDER BY total_man_days DESC`,
-      [month, companyId],
+      [companyId, month],
     );
   }
 
   async getProjectDetail(companyId: number, projectId: number, month: string) {
     return this.dataSource.query(
-      `SELECT consultant_type, total_man_days, employee_count
-       FROM vw_project_man_days
-       WHERE project_id = ? AND month = ? AND company_id = ?`,
-      [projectId, month, companyId],
+      `SELECT
+         e.consultant_type                     AS consultant_type,
+         ROUND(SUM(te.duration_hours) / 8, 2)  AS total_man_days,
+         COUNT(DISTINCT e.id)                  AS employee_count
+       FROM projects p
+         JOIN task_entries te       ON te.project_id = p.id
+         JOIN daily_task_sheets dts ON dts.id = te.task_sheet_id
+         JOIN employees e           ON e.id = dts.employee_id
+       WHERE p.id = ?
+         AND p.company_id = ?
+         AND dts.is_submitted = TRUE
+         AND DATE_FORMAT(dts.sheet_date, '%Y-%m') = ?
+       GROUP BY e.consultant_type`,
+      [projectId, companyId, month],
     );
   }
 
@@ -170,6 +189,144 @@ export class ReportsService {
        ORDER BY days_since_last_fill DESC, e.emp_name ASC`,
       [companyId],
     );
+  }
+
+  // ── Attendance Report ──────────────────────────────────────────────────────
+
+  async getAttendanceReport(companyId: number, year: number, month: number) {
+    const startDate = `${year}-${String(month).padStart(2, '0')}-01`;
+    const daysInMonth = new Date(year, month, 0).getDate();
+    const endDate = `${year}-${String(month).padStart(2, '0')}-${daysInMonth}`;
+
+    // Get all active employees
+    const employees: any[] = await this.dataSource.query(
+      `SELECT id, emp_code, emp_name, consultant_type FROM employees WHERE company_id = ? AND is_active = 1 ORDER BY emp_name`,
+      [companyId],
+    );
+
+    // Get all submitted task sheets for the month
+    const sheets: any[] = await this.dataSource.query(
+      `SELECT employee_id, DATE_FORMAT(sheet_date, '%Y-%m-%d') AS sheet_date, total_hours, is_submitted
+       FROM daily_task_sheets
+       WHERE company_id = ? AND sheet_date BETWEEN ? AND ?
+       ORDER BY sheet_date`,
+      [companyId, startDate, endDate],
+    );
+
+    // Get public holidays for the month
+    const holidays: any[] = await this.dataSource.query(
+      `SELECT DATE_FORMAT(holiday_date, '%Y-%m-%d') AS holiday_date, name FROM public_holidays WHERE company_id = ? AND holiday_date BETWEEN ? AND ?`,
+      [companyId, startDate, endDate],
+    );
+    const holidayDates = new Set(holidays.map((h: any) => h.holiday_date));
+    const holidayMap: Record<string, string> = {};
+    holidays.forEach((h: any) => { holidayMap[h.holiday_date] = h.name; });
+
+    // Get approved leaves for the month
+    const leaves: any[] = await this.dataSource.query(
+      `SELECT lr.employee_id, lr.date_from, lr.date_to, lt.reason_name AS leave_type
+       FROM leave_requests lr
+       LEFT JOIN leave_reasons lt ON lt.id = lr.leave_reason_id
+       WHERE lr.company_id = ? AND lr.status IN ('hr_approved', 'manager_approved')
+         AND lr.date_from <= ? AND lr.date_to >= ?`,
+      [companyId, endDate, startDate],
+    );
+
+    // Build leave map: empId -> Set of leave dates
+    const leaveMap = new Map<number, Map<string, string>>();
+    for (const l of leaves) {
+      if (!leaveMap.has(l.employee_id)) leaveMap.set(l.employee_id, new Map());
+      const from = new Date(l.date_from);
+      const to = new Date(l.date_to);
+      for (let d = new Date(from); d <= to; d.setDate(d.getDate() + 1)) {
+        const ds = d.toISOString().split('T')[0];
+        if (ds >= startDate && ds <= endDate) {
+          leaveMap.get(l.employee_id)!.set(ds, l.leave_type ?? 'Leave');
+        }
+      }
+    }
+
+    // Build sheet map: empId -> Set of dates with hours > 0
+    const sheetMap = new Map<number, Set<string>>();
+    for (const s of sheets) {
+      if (Number(s.total_hours) > 0) {
+        if (!sheetMap.has(s.employee_id)) sheetMap.set(s.employee_id, new Set());
+        sheetMap.get(s.employee_id)!.add(s.sheet_date);
+      }
+    }
+
+    // Calculate working days (exclude Sundays + holidays)
+    const allDays: string[] = [];
+    let totalWorkingDays = 0;
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+      allDays.push(dateStr);
+      const dayOfWeek = new Date(year, month - 1, d).getDay();
+      const isSunday = dayOfWeek === 0;
+      const isHoliday = holidayDates.has(dateStr);
+      if (!isSunday && !isHoliday) totalWorkingDays++;
+    }
+
+    // Build per-employee attendance
+    const rows = employees.map((emp) => {
+      const presentDates = sheetMap.get(emp.id) || new Set<string>();
+      let presentDays = 0;
+      let absentDays = 0;
+
+      const empLeaves = leaveMap.get(emp.id) || new Map<string, string>();
+      let leaveDays = 0;
+      const dailyStatus: { date: string; status: 'present' | 'absent' | 'sunday' | 'holiday' | 'on_leave' | 'saturday'; leaveType?: string }[] = [];
+
+      for (const dateStr of allDays) {
+        const dayOfWeek = new Date(dateStr + 'T00:00:00').getDay();
+        const isSunday = dayOfWeek === 0;
+        const isHoliday = holidayDates.has(dateStr);
+        const isPresent = presentDates.has(dateStr);
+        const leaveType = empLeaves.get(dateStr);
+        const isOnLeave = !!leaveType;
+        const isPast = new Date(dateStr + 'T23:59:59') < new Date();
+
+        if (isSunday) {
+          dailyStatus.push({ date: dateStr, status: 'sunday' });
+        } else if (isHoliday) {
+          dailyStatus.push({ date: dateStr, status: 'holiday' });
+        } else if (isPresent) {
+          presentDays++;
+          dailyStatus.push({ date: dateStr, status: 'present' });
+        } else if (isOnLeave) {
+          leaveDays++;
+          dailyStatus.push({ date: dateStr, status: 'on_leave', leaveType });
+        } else {
+          if (isPast) absentDays++;
+          dailyStatus.push({ date: dateStr, status: isPast ? 'absent' : 'saturday' });
+        }
+      }
+
+      const attendancePercent = totalWorkingDays > 0 ? Math.round(((presentDays + leaveDays) / totalWorkingDays) * 100) : 0;
+
+      return {
+        employeeId: emp.id,
+        empCode: emp.emp_code,
+        empName: emp.emp_name,
+        consultantType: emp.consultant_type,
+        presentDays,
+        leaveDays,
+        absentDays,
+        totalWorkingDays,
+        attendancePercent,
+        dailyStatus,
+      };
+    });
+
+    return {
+      year,
+      month,
+      daysInMonth,
+      totalWorkingDays,
+      days: allDays,
+      holidays: holidayMap,
+      rows,
+    };
   }
 
   // ── Employee Cost Report ───────────────────────────────────────────────────

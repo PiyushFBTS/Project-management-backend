@@ -183,6 +183,7 @@ GROUP BY e.id, p.id, DATE_FORMAT(dts.sheet_date, '%Y-%m');
 CREATE OR REPLACE VIEW `vw_project_man_days` AS
 SELECT
   p.id                                        AS project_id,
+  p.company_id                                AS company_id,
   p.project_code,
   p.project_name,
   p.project_type,
@@ -196,7 +197,7 @@ FROM `projects` p
   JOIN `daily_task_sheets` dts ON dts.id = te.task_sheet_id
   JOIN `employees` e           ON e.id = dts.employee_id
 WHERE dts.is_submitted = TRUE
-GROUP BY p.id, e.consultant_type, DATE_FORMAT(dts.sheet_date, '%Y-%m');
+GROUP BY p.id, p.company_id, e.consultant_type, DATE_FORMAT(dts.sheet_date, '%Y-%m');
 
 -- ============================================================
 -- Done

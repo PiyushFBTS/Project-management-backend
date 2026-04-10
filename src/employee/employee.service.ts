@@ -25,9 +25,11 @@ export class EmployeeService {
   }
 
   getActiveProjects(companyId: number) {
+    // Include the project manager + full metadata so the mobile project detail
+    // page can render client / PM / dates without making an admin-only call.
     return this.projectRepo.find({
       where: { status: 'active' as any, companyId },
-      select: ['id', 'projectCode', 'projectName', 'projectType'],
+      relations: ['projectManager'],
       order: { projectName: 'ASC' },
     });
   }

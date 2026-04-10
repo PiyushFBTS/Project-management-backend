@@ -107,6 +107,22 @@ export class ReportsController {
     return this.reportsService.getEmployeeCostReport(companyId, from, to);
   }
 
+  // ── Attendance ────────────────────────────────────────────────────────────
+
+  @Get('attendance')
+  @ApiOperation({ summary: 'Attendance report based on task sheet submissions' })
+  @ApiQuery({ name: 'year', example: 2026 })
+  @ApiQuery({ name: 'month', example: 4 })
+  getAttendance(
+    @TenantId() companyId: number,
+    @Query('year') year: string,
+    @Query('month') month: string,
+  ) {
+    const y = parseInt(year, 10) || new Date().getFullYear();
+    const m = parseInt(month, 10) || (new Date().getMonth() + 1);
+    return this.reportsService.getAttendanceReport(companyId, y, m);
+  }
+
   // ── Monthly Grid ──────────────────────────────────────────────────────────
 
   @Get('monthly-grid')
