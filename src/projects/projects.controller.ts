@@ -183,6 +183,28 @@ export class ProjectsController {
     return this.projectsService.deleteClient(id, clientId, companyId);
   }
 
+  @Patch(':id/clients/:clientId/toggle-active')
+  @ApiOperation({ summary: 'Enable or disable client login' })
+  toggleClientActive(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('clientId', ParseIntPipe) clientId: number,
+    @TenantId() companyId: number,
+    @Body() dto: { isActive: boolean },
+  ) {
+    return this.projectsService.toggleClientActive(id, clientId, companyId, dto.isActive);
+  }
+
+  @Patch(':id/clients/:clientId/password')
+  @ApiOperation({ summary: 'Change client password' })
+  changeClientPassword(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('clientId', ParseIntPipe) clientId: number,
+    @TenantId() companyId: number,
+    @Body() dto: { password: string },
+  ) {
+    return this.projectsService.changeClientPassword(id, clientId, companyId, dto.password);
+  }
+
   // ── Milestones ──
   @Get(':id/milestones')
   @ApiOperation({ summary: 'List milestones for a project' })

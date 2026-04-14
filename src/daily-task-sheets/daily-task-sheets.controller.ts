@@ -120,6 +120,86 @@ export class AdminTaskSheetsController {
     return this.service.adminFindAll(companyId, filter);
   }
 
+  // ── Admin's personal sheet endpoints (bridged via matching employee record) ──
+  @Get('my/today')
+  @ApiOperation({ summary: "Get or create admin's today sheet (by email match)" })
+  myToday(@CurrentUser() admin: any, @TenantId() companyId: number) {
+    return this.service.adminMyToday(admin.email, companyId);
+  }
+
+  @Get('my/by-date')
+  @ApiOperation({ summary: "Get or create admin's sheet for specific date" })
+  myByDate(
+    @CurrentUser() admin: any,
+    @TenantId() companyId: number,
+    @Query('date') date: string,
+  ) {
+    return this.service.adminMyByDate(admin.email, companyId, date);
+  }
+
+  @Get('my/history')
+  @ApiOperation({ summary: "List admin's own past task sheets" })
+  myHistory(@CurrentUser() admin: any, @TenantId() companyId: number, @Query() filter: FilterSheetDto) {
+    return this.service.adminMyHistory(admin.email, companyId, filter);
+  }
+
+  @Patch('my/:id')
+  @ApiOperation({ summary: 'Update remarks on admin sheet' })
+  myUpdateRemarks(
+    @CurrentUser() admin: any,
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: UpdateSheetDto,
+  ) {
+    return this.service.adminMyUpdateRemarks(admin.email, companyId, id, dto);
+  }
+
+  @Post('my/:id/submit')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Submit admin sheet' })
+  mySubmit(
+    @CurrentUser() admin: any,
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.service.adminMySubmit(admin.email, companyId, id);
+  }
+
+  @Post('my/:id/entries')
+  @ApiOperation({ summary: 'Add entry to admin sheet' })
+  myAddEntry(
+    @CurrentUser() admin: any,
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: CreateEntryDto,
+  ) {
+    return this.service.adminMyAddEntry(admin.email, companyId, id, dto);
+  }
+
+  @Patch('my/:id/entries/:entryId')
+  @ApiOperation({ summary: 'Update entry in admin sheet' })
+  myUpdateEntry(
+    @CurrentUser() admin: any,
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('entryId', ParseIntPipe) entryId: number,
+    @Body() dto: UpdateEntryDto,
+  ) {
+    return this.service.adminMyUpdateEntry(admin.email, companyId, id, entryId, dto);
+  }
+
+  @Delete('my/:id/entries/:entryId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete entry from admin sheet' })
+  myDeleteEntry(
+    @CurrentUser() admin: any,
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('entryId', ParseIntPipe) entryId: number,
+  ) {
+    return this.service.adminMyDeleteEntry(admin.email, companyId, id, entryId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: "View any employee's task sheet with entries" })
   findOne(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {

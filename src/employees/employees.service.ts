@@ -221,6 +221,20 @@ export class EmployeesService {
     return { message: 'Praise removed' };
   }
 
+  /// Returns praises for the admin's bridged employee record (matched by email).
+  /// If no employee record exists for this admin email, returns an empty list.
+  async getAdminOwnPraises(adminEmail: string, companyId: number) {
+    if (!companyId) return [];
+    const emp = await this.employeeRepo.findOne({
+      where: { email: adminEmail, companyId },
+    });
+    if (!emp) return [];
+    return this.praiseRepo.find({
+      where: { employeeId: emp.id, companyId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
   // ── PIP (Performance Improvement Plan) ───────────────────────────────────
 
   async getPips(employeeId: number, companyId: number) {

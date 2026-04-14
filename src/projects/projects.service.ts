@@ -235,6 +235,25 @@ export class ProjectsService {
     return { message: 'Client removed' };
   }
 
+  async toggleClientActive(projectId: number, clientId: number, companyId: number, isActive: boolean) {
+    const client = await this.clientRepo.findOne({ where: { id: clientId, projectId, companyId } });
+    if (!client) throw new NotFoundException('Client not found');
+    client.isActive = isActive;
+    await this.clientRepo.save(client);
+    return { message: isActive ? 'Client login enabled' : 'Client login disabled', isActive };
+  }
+
+  async changeClientPassword(projectId: number, clientId: number, companyId: number, password: string) {
+    if (!password || password.length < 6) {
+      throw new ConflictException('Password must be at least 6 characters');
+    }
+    const client = await this.clientRepo.findOne({ where: { id: clientId, projectId, companyId } });
+    if (!client) throw new NotFoundException('Client not found');
+    client.passwordHash = await bcrypt.hash(password, 10);
+    await this.clientRepo.save(client);
+    return { message: 'Password updated' };
+  }
+
   // ── Milestones ──────────────────────────────────────────────────────────────
 
   async getMilestones(projectId: number, companyId: number) {

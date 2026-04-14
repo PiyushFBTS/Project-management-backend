@@ -274,6 +274,12 @@ export class EmployeesController {
     return this.employeesService.givePraise(id, companyId, adminId, 'admin', adminName, body.praiseType, body.description);
   }
 
+  @Get('me/praises')
+  @ApiOperation({ summary: "Praises received by the logged-in admin (via bridged employee record)" })
+  getMyAdminPraises(@CurrentUser('email') adminEmail: string, @TenantId() companyId: number) {
+    return this.employeesService.getAdminOwnPraises(adminEmail, companyId);
+  }
+
   @Delete('praises/:praiseId')
   @ApiOperation({ summary: 'Remove a praise' })
   removePraise(@TenantId() companyId: number, @Param('praiseId', ParseIntPipe) praiseId: number) {

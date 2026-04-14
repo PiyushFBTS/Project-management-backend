@@ -8,6 +8,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { DailyTaskSheet } from '../database/entities/daily-task-sheet.entity';
 import { TaskEntry } from '../database/entities/task-entry.entity';
+import { Employee, ConsultantType } from '../database/entities/employee.entity';
 import { CreateEntryDto } from './dto/create-entry.dto';
 import { UpdateEntryDto } from './dto/update-entry.dto';
 import { UpdateSheetDto } from './dto/update-sheet.dto';
@@ -22,9 +23,89 @@ export class DailyTaskSheetsService {
     private readonly sheetRepo: Repository<DailyTaskSheet>,
     @InjectRepository(TaskEntry)
     private readonly entryRepo: Repository<TaskEntry>,
+    @InjectRepository(Employee)
+    private readonly employeeRepo: Repository<Employee>,
     private readonly dataSource: DataSource,
     private readonly notificationsService: NotificationsService,
   ) {}
+
+  // ── Admin-as-employee bridge ───────────────────────────────────────────────
+
+  /// Look up the employee record matching the admin's email within the same company.
+  /// Creates a lightweight employee stub if none exists, so admin can fill sheets.
+  private async resolveAdminEmployeeId(email: string, companyId: number): Promise<number> {
+    if (!companyId) {
+      throw new BadRequestException('No company context. Super admins cannot fill task sheets; select a company first.');
+    }
+    // Try active employee with same email in the same company
+    let emp = await this.employeeRepo.findOne({
+      where: { email, companyId, isActive: true },
+    });
+    if (emp) return emp.id;
+    // Try any employee (including inactive) with the matching email; reactivate
+    emp = await this.employeeRepo.findOne({ where: { email, companyId } });
+    if (emp) {
+      if (!emp.isActive) {
+        emp.isActive = true;
+        await this.employeeRepo.save(emp);
+      }
+      return emp.id;
+    }
+    // Auto-create a minimal employee record for the admin
+    const namePart = email.split('@')[0];
+    emp = this.employeeRepo.create({
+      empCode: `ADM-${Date.now()}`,
+      empName: namePart,
+      email,
+      passwordHash: 'ADMIN_NO_LOGIN',
+      consultantType: ConsultantType.MANAGEMENT,
+      mobileNumber: '',
+      isActive: true,
+      companyId,
+    });
+    const saved = await this.employeeRepo.save(emp);
+    return saved.id;
+  }
+
+  async adminMyToday(email: string, companyId: number) {
+    const empId = await this.resolveAdminEmployeeId(email, companyId);
+    return this.getTodaySheet(empId, companyId);
+  }
+
+  async adminMyByDate(email: string, companyId: number, date: string) {
+    const empId = await this.resolveAdminEmployeeId(email, companyId);
+    return this.getSheetByDate(empId, companyId, date);
+  }
+
+  async adminMyHistory(email: string, companyId: number, filter: FilterSheetDto) {
+    const empId = await this.resolveAdminEmployeeId(email, companyId);
+    return this.getHistory(empId, filter);
+  }
+
+  async adminMyUpdateRemarks(email: string, companyId: number, id: number, dto: UpdateSheetDto) {
+    const empId = await this.resolveAdminEmployeeId(email, companyId);
+    return this.updateRemarks(id, empId, dto);
+  }
+
+  async adminMySubmit(email: string, companyId: number, id: number) {
+    const empId = await this.resolveAdminEmployeeId(email, companyId);
+    return this.submit(id, empId, companyId);
+  }
+
+  async adminMyAddEntry(email: string, companyId: number, id: number, dto: CreateEntryDto) {
+    const empId = await this.resolveAdminEmployeeId(email, companyId);
+    return this.addEntry(id, empId, companyId, dto);
+  }
+
+  async adminMyUpdateEntry(email: string, companyId: number, id: number, entryId: number, dto: UpdateEntryDto) {
+    const empId = await this.resolveAdminEmployeeId(email, companyId);
+    return this.updateEntry(id, entryId, empId, dto);
+  }
+
+  async adminMyDeleteEntry(email: string, companyId: number, id: number, entryId: number) {
+    const empId = await this.resolveAdminEmployeeId(email, companyId);
+    return this.deleteEntry(id, entryId, empId);
+  }
 
   // ── Employee endpoints ──────────────────────────────────────────────────────
 
