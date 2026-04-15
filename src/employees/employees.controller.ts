@@ -177,6 +177,63 @@ export class EmployeeColleaguesController {
     return this.employeesService.acknowledgePip(pipId, companyId, empId, empName ?? 'Employee', body.note);
   }
 
+  // ── Goals (employee self) ──
+  @Get(':id/goals')
+  @ApiOperation({ summary: 'Get goals for an employee' })
+  getEmpGoals(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.employeesService.getGoals(id, companyId);
+  }
+
+  @Post(':id/goals')
+  @ApiOperation({ summary: 'Employee creates a goal for themselves' })
+  createEmpGoal(
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('id') empId: number,
+    @CurrentUser('empName') empName: string,
+    @Body() dto: {
+      title: string;
+      description?: string;
+      timeframe: 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
+      progressPercent?: number;
+      targetDate?: string;
+    },
+  ) {
+    if (id !== empId) {
+      throw new ForbiddenException('You can only create goals for yourself');
+    }
+    return this.employeesService.createGoal(id, companyId, empId, 'employee', empName ?? 'Employee', dto);
+  }
+
+  @Patch(':id/goals/:goalId')
+  @ApiOperation({ summary: 'Employee updates their own goal' })
+  updateEmpGoal(
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('goalId', ParseIntPipe) goalId: number,
+    @CurrentUser('id') empId: number,
+    @Body() dto: any,
+  ) {
+    if (id !== empId) {
+      throw new ForbiddenException('You can only update your own goals');
+    }
+    return this.employeesService.updateGoal(goalId, id, companyId, dto);
+  }
+
+  @Delete(':id/goals/:goalId')
+  @ApiOperation({ summary: 'Employee deletes their own goal' })
+  deleteEmpGoal(
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('goalId', ParseIntPipe) goalId: number,
+    @CurrentUser('id') empId: number,
+  ) {
+    if (id !== empId) {
+      throw new ForbiddenException('You can only delete your own goals');
+    }
+    return this.employeesService.deleteGoal(goalId, id, companyId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get a colleague by ID (read-only)' })
   findOne(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
@@ -278,6 +335,101 @@ export class EmployeesController {
   @ApiOperation({ summary: "Praises received by the logged-in admin (via bridged employee record)" })
   getMyAdminPraises(@CurrentUser('email') adminEmail: string, @TenantId() companyId: number) {
     return this.employeesService.getAdminOwnPraises(adminEmail, companyId);
+  }
+
+  // ── Goals (Admin) ────────────────────────────────────────────────────
+  @Get(':id/goals')
+  @ApiOperation({ summary: 'Get goals for an employee' })
+  getGoals(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.employeesService.getGoals(id, companyId);
+  }
+
+  @Post(':id/goals')
+  @ApiOperation({ summary: 'Create a goal for an employee (admin)' })
+  createGoal(
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('id') adminId: number,
+    @CurrentUser('name') adminName: string,
+    @Body() dto: {
+      title: string;
+      description?: string;
+      timeframe: 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
+      progressPercent?: number;
+      targetDate?: string;
+    },
+  ) {
+    return this.employeesService.createGoal(id, companyId, adminId, 'admin', adminName ?? 'Admin', dto);
+  }
+
+  @Patch(':id/goals/:goalId')
+  @ApiOperation({ summary: 'Update a goal (admin)' })
+  updateGoal(
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('goalId', ParseIntPipe) goalId: number,
+    @Body() dto: any,
+  ) {
+    return this.employeesService.updateGoal(goalId, id, companyId, dto);
+  }
+
+  @Delete(':id/goals/:goalId')
+  @ApiOperation({ summary: 'Delete a goal (admin)' })
+  deleteGoal(
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('goalId', ParseIntPipe) goalId: number,
+  ) {
+    return this.employeesService.deleteGoal(goalId, id, companyId);
+  }
+
+  // ── Admin's own goals (bridged via employee record) ──────────────────
+  @Get('me/goals')
+  @ApiOperation({ summary: "Admin's own goals (via bridged employee record)" })
+  getMyAdminGoals(@CurrentUser('email') adminEmail: string, @TenantId() companyId: number) {
+    return this.employeesService.getAdminOwnGoals(adminEmail, companyId);
+  }
+
+  @Post('me/goals')
+  @ApiOperation({ summary: "Admin creates a goal for themselves" })
+  async createMyAdminGoal(
+    @CurrentUser('email') adminEmail: string,
+    @CurrentUser('id') adminId: number,
+    @CurrentUser('name') adminName: string,
+    @TenantId() companyId: number,
+    @Body() dto: {
+      title: string;
+      description?: string;
+      timeframe: 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
+      progressPercent?: number;
+      targetDate?: string;
+    },
+  ) {
+    const empId = await this.employeesService.resolveAdminEmpForGoals(adminEmail, companyId);
+    return this.employeesService.createGoal(empId, companyId, adminId, 'admin', adminName ?? 'Admin', dto);
+  }
+
+  @Patch('me/goals/:goalId')
+  @ApiOperation({ summary: "Admin updates their own goal" })
+  async updateMyAdminGoal(
+    @CurrentUser('email') adminEmail: string,
+    @TenantId() companyId: number,
+    @Param('goalId', ParseIntPipe) goalId: number,
+    @Body() dto: any,
+  ) {
+    const empId = await this.employeesService.resolveAdminEmpForGoals(adminEmail, companyId);
+    return this.employeesService.updateGoal(goalId, empId, companyId, dto);
+  }
+
+  @Delete('me/goals/:goalId')
+  @ApiOperation({ summary: "Admin deletes their own goal" })
+  async deleteMyAdminGoal(
+    @CurrentUser('email') adminEmail: string,
+    @TenantId() companyId: number,
+    @Param('goalId', ParseIntPipe) goalId: number,
+  ) {
+    const empId = await this.employeesService.resolveAdminEmpForGoals(adminEmail, companyId);
+    return this.employeesService.deleteGoal(goalId, empId, companyId);
   }
 
   @Delete('praises/:praiseId')

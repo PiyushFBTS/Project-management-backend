@@ -8,10 +8,11 @@ import { AdminUser } from '../database/entities/admin-user.entity';
 import { EmployeeDocument } from '../database/entities/employee-document.entity';
 import { EmployeePraise } from '../database/entities/employee-praise.entity';
 import { EmployeePip } from '../database/entities/employee-pip.entity';
+import { EmployeeGoal } from '../database/entities/employee-goal.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Employee, Company, AdminUser, EmployeeDocument, EmployeePraise, EmployeePip]), NotificationsModule],
+  imports: [TypeOrmModule.forFeature([Employee, Company, AdminUser, EmployeeDocument, EmployeePraise, EmployeePip, EmployeeGoal]), NotificationsModule],
   providers: [EmployeesService],
   controllers: [EmployeesController, EmployeeColleaguesController],
   exports: [EmployeesService],

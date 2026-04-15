@@ -10,6 +10,7 @@ import { AdminUser } from '../database/entities/admin-user.entity';
 import { EmployeeDocument, EmployeeDocCategory } from '../database/entities/employee-document.entity';
 import { EmployeePraise } from '../database/entities/employee-praise.entity';
 import { EmployeePip } from '../database/entities/employee-pip.entity';
+import { EmployeeGoal, GoalTimeframe, GoalStatus } from '../database/entities/employee-goal.entity';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { UpdateEmployeeSelfDto } from './dto/update-employee-self.dto';
@@ -19,6 +20,12 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../database/entities/notification.entity';
 
 const SORTABLE = ['id', 'empCode', 'empName', 'consultantType', 'email', 'isActive', 'createdAt'];
+
+function deriveStatus(progress: number): GoalStatus {
+  if (progress >= 100) return 'finished';
+  if (progress > 0) return 'in_progress';
+  return 'not_started';
+}
 
 @Injectable()
 export class EmployeesService {
@@ -35,8 +42,148 @@ export class EmployeesService {
     private readonly praiseRepo: Repository<EmployeePraise>,
     @InjectRepository(EmployeePip)
     private readonly pipRepo: Repository<EmployeePip>,
+    @InjectRepository(EmployeeGoal)
+    private readonly goalRepo: Repository<EmployeeGoal>,
     private readonly notificationsService: NotificationsService,
   ) {}
+
+  // ── Goals ──────────────────────────────────────────────────────────────────
+
+  async getGoals(employeeId: number, companyId: number) {
+    return this.goalRepo.find({
+      where: { employeeId, companyId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  async createGoal(
+    employeeId: number,
+    companyId: number,
+    createdById: number,
+    createdByType: 'admin' | 'employee',
+    createdByName: string,
+    dto: {
+      title: string;
+      description?: string;
+      timeframe: GoalTimeframe;
+      progressPercent?: number;
+      targetDate?: string;
+    },
+  ) {
+    if (!dto.title || dto.title.trim().length === 0) {
+      throw new ConflictException('Title is required');
+    }
+    const validTimeframes: GoalTimeframe[] = ['monthly', 'quarterly', 'half_yearly', 'yearly'];
+    if (!validTimeframes.includes(dto.timeframe)) {
+      throw new ConflictException('Invalid timeframe');
+    }
+    const progress = Math.max(0, Math.min(100, dto.progressPercent ?? 0));
+    const goal = this.goalRepo.create({
+      employeeId,
+      companyId,
+      title: dto.title.trim(),
+      description: dto.description?.trim() || null,
+      timeframe: dto.timeframe,
+      progressPercent: progress,
+      targetDate: dto.targetDate || null,
+      status: deriveStatus(progress),
+      createdById,
+      createdByType,
+      createdByName,
+    });
+    return this.goalRepo.save(goal);
+  }
+
+  async updateGoal(
+    goalId: number,
+    employeeId: number,
+    companyId: number,
+    dto: {
+      title?: string;
+      description?: string;
+      timeframe?: GoalTimeframe;
+      progressPercent?: number;
+      targetDate?: string | null;
+      status?: GoalStatus;
+    },
+  ) {
+    const goal = await this.goalRepo.findOne({
+      where: { id: goalId, employeeId, companyId },
+    });
+    if (!goal) throw new NotFoundException('Goal not found');
+
+    if (dto.title !== undefined) goal.title = dto.title.trim();
+    if (dto.description !== undefined) goal.description = dto.description?.trim() || null;
+    if (dto.timeframe !== undefined) goal.timeframe = dto.timeframe;
+    if (dto.progressPercent !== undefined) {
+      goal.progressPercent = Math.max(0, Math.min(100, dto.progressPercent));
+      // Auto-derive status from progress unless caller explicitly sets one
+      if (dto.status === undefined) {
+        goal.status = deriveStatus(goal.progressPercent);
+      }
+    }
+    if (dto.targetDate !== undefined) goal.targetDate = dto.targetDate || null;
+    if (dto.status !== undefined) {
+      goal.status = dto.status;
+      // Keep progress in sync when status implies a definite value
+      if (dto.status === 'finished' && goal.progressPercent < 100) goal.progressPercent = 100;
+      if (dto.status === 'not_started' && dto.progressPercent === undefined) goal.progressPercent = 0;
+    }
+
+    return this.goalRepo.save(goal);
+  }
+
+  async deleteGoal(goalId: number, employeeId: number, companyId: number) {
+    const goal = await this.goalRepo.findOne({
+      where: { id: goalId, employeeId, companyId },
+    });
+    if (!goal) throw new NotFoundException('Goal not found');
+    await this.goalRepo.remove(goal);
+    return { message: 'Goal removed' };
+  }
+
+  /// Returns goals for the admin's bridged employee record (matched by email).
+  async getAdminOwnGoals(adminEmail: string, companyId: number) {
+    if (!companyId) return [];
+    const emp = await this.employeeRepo.findOne({
+      where: { email: adminEmail, companyId },
+    });
+    if (!emp) return [];
+    return this.goalRepo.find({
+      where: { employeeId: emp.id, companyId },
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /// Resolve admin email to bridged employee ID, auto-creating minimal record if missing
+  async resolveAdminEmpForGoals(adminEmail: string, companyId: number): Promise<number> {
+    if (!companyId) {
+      throw new ConflictException('No company context');
+    }
+    let emp = await this.employeeRepo.findOne({
+      where: { email: adminEmail, companyId },
+    });
+    if (emp) {
+      if (!emp.isActive) {
+        emp.isActive = true;
+        await this.employeeRepo.save(emp);
+      }
+      return emp.id;
+    }
+    const namePart = adminEmail.split('@')[0];
+    emp = this.employeeRepo.create({
+      empCode: `ADM-${Date.now()}`,
+      empName: namePart,
+      email: adminEmail,
+      passwordHash: 'ADMIN_NO_LOGIN',
+      consultantType: ConsultantType.MANAGEMENT,
+      mobileNumber: '',
+      isActive: true,
+      companyId,
+    });
+    const saved = await this.employeeRepo.save(emp);
+    return saved.id;
+  }
 
   async findAll(companyId: number, filter: FilterEmployeeDto) {
     const { page = 1, limit = 20, sort = 'empName', order = 'asc', search, consultantType, assignedProjectId, isActive } = filter;
