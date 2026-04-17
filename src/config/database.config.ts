@@ -52,6 +52,9 @@ export const databaseConfig = (
   logging: configService.get<string>('DB_LOGGING') === 'true',
   charset: 'utf8mb4',
   timezone: '+00:00',
+  ssl: configService.get<string>('DB_SSL') === 'true'
+    ? { rejectUnauthorized: false }
+    : undefined,
   extra: {
     connectionLimit: 10,
   },

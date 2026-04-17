@@ -56,4 +56,7 @@ export const AppDataSource = new DataSource({
   logging: process.env.DB_LOGGING === 'true',
   charset: 'utf8mb4',
   timezone: '+00:00',
+  ssl: process.env.DB_SSL === 'true'
+    ? { rejectUnauthorized: false }
+    : undefined,
 });
