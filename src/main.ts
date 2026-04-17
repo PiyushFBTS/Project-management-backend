@@ -33,15 +33,7 @@ async function bootstrap() {
     .split(',')
     .map((o) => o.trim());
   app.enableCors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (mobile apps, curl, etc.)
-      if (!origin) return callback(null, true);
-      // Allow any localhost origin (Flutter web uses random ports)
-      if (/^http:\/\/localhost(:\d+)?$/.test(origin) || allowedOrigins.includes(origin)) {
-        return callback(null, true);
-      }
-      callback(new Error('Not allowed by CORS'));
-    },
+    origin: true,
     credentials: true,
   });
 
