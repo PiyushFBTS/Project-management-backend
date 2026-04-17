@@ -177,10 +177,18 @@ export class EmployeeColleaguesController {
     return this.employeesService.acknowledgePip(pipId, companyId, empId, empName ?? 'Employee', body.note);
   }
 
-  // ── Goals (employee self) ──
+  // ── Goals (employee self or HR) ──
   @Get(':id/goals')
-  @ApiOperation({ summary: 'Get goals for an employee' })
-  getEmpGoals(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
+  @ApiOperation({ summary: 'Get goals for an employee (self or HR only)' })
+  getEmpGoals(
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('id') empId: number,
+    @CurrentUser('isHr') isHr: boolean,
+  ) {
+    if (id !== empId && !isHr) {
+      throw new ForbiddenException('You can only view your own goals');
+    }
     return this.employeesService.getGoals(id, companyId);
   }
 

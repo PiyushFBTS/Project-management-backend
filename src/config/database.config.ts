@@ -35,6 +35,7 @@ import { PublicHoliday } from '../database/entities/public-holiday.entity';
 import { EmployeePraise } from '../database/entities/employee-praise.entity';
 import { EmployeePip } from '../database/entities/employee-pip.entity';
 import { EmployeeGoal } from '../database/entities/employee-goal.entity';
+import { Announcement } from '../database/entities/announcement.entity';
 
 export const databaseConfig = (
   configService: ConfigService,
@@ -45,7 +46,7 @@ export const databaseConfig = (
   username: configService.get<string>('DB_USERNAME', 'root'),
   password: configService.get<string>('DB_PASSWORD', ''),
   database: configService.get<string>('DB_DATABASE', 'it_project_management'),
-  entities: [Company, AdminUser, Project, TaskType, Employee, DailyTaskSheet, TaskEntry, Notification, LeaveType, LeaveRequest, LeaveRequestWatcher, SmtpConfig, ProjectPhase, ProjectTask, ProjectTaskComment, ProjectTaskHistory, Country, State, City, Currency, PostalCode, EmailLog, TicketContributor, TicketAssignee, ProjectDocument, ClientUser, TaskAttachment, EmployeeDocument, ProjectMilestone, ProjectTypeEntity, Expense, PublicHoliday, EmployeePraise, EmployeePip, EmployeeGoal],
+  entities: [Company, AdminUser, Project, TaskType, Employee, DailyTaskSheet, TaskEntry, Notification, LeaveType, LeaveRequest, LeaveRequestWatcher, SmtpConfig, ProjectPhase, ProjectTask, ProjectTaskComment, ProjectTaskHistory, Country, State, City, Currency, PostalCode, EmailLog, TicketContributor, TicketAssignee, ProjectDocument, ClientUser, TaskAttachment, EmployeeDocument, ProjectMilestone, ProjectTypeEntity, Expense, PublicHoliday, EmployeePraise, EmployeePip, EmployeeGoal, Announcement],
   // NEVER set synchronize: true in production — use migrations instead
   synchronize: configService.get<string>('DB_SYNCHRONIZE') === 'true',
   logging: configService.get<string>('DB_LOGGING') === 'true',

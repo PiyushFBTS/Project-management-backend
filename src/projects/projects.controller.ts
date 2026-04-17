@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   HttpStatus,
@@ -281,6 +282,36 @@ export class EmployeeProjectsController {
   @ApiOperation({ summary: 'List all active projects (for task sheet dropdowns)' })
   findAllActive(@TenantId() companyId: number) {
     return this.projectsService.findAll(companyId, { status: 'active', limit: 200 } as any);
+  }
+
+  // ── Project Types (visible to all employees, HR can create/delete) ──
+  @Get('types/list')
+  @ApiOperation({ summary: 'List project types (visible to all employees)' })
+  getProjectTypes(@TenantId() companyId: number) {
+    return this.projectsService.getProjectTypes(companyId);
+  }
+
+  @Post('types')
+  @ApiOperation({ summary: 'Create a project type (HR only)' })
+  createProjectType(
+    @TenantId() companyId: number,
+    @CurrentUser('isHr') isHr: boolean,
+    @Body() dto: { value: string; label: string; description?: string },
+  ) {
+    if (!isHr) throw new ForbiddenException('Only HR can create project types');
+    return this.projectsService.createProjectType(companyId, dto);
+  }
+
+  @Delete('types/:typeId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Delete a project type (HR only)' })
+  deleteProjectType(
+    @TenantId() companyId: number,
+    @CurrentUser('isHr') isHr: boolean,
+    @Param('typeId', ParseIntPipe) typeId: number,
+  ) {
+    if (!isHr) throw new ForbiddenException('Only HR can delete project types');
+    return this.projectsService.deleteProjectType(companyId, typeId);
   }
 
   @Get(':id/clients')
