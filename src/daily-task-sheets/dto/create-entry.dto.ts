@@ -25,6 +25,22 @@ export class CreateEntryDto {
   @IsOptional()
   taskTypeId?: number;
 
+  @ApiPropertyOptional({ description: 'Ticket ID this entry is logged against (optional)' })
+  @Type(() => Number)
+  @IsInt()
+  @IsPositive()
+  @IsOptional()
+  ticketId?: number;
+
+  @ApiPropertyOptional({
+    description: 'Activity type when no ticket (internal_meeting, client_meeting, others)',
+    maxLength: 30,
+  })
+  @IsString()
+  @IsOptional()
+  @MaxLength(30)
+  activityType?: string;
+
   @ApiProperty({ example: '09:00', description: 'Task start time (HH:MM)' })
   @IsString()
   @Matches(/^\d{2}:\d{2}$/, { message: 'fromTime must be in HH:MM format' })

@@ -325,6 +325,8 @@ export class EmployeesService {
     if (dto.empName !== undefined) employee.empName = dto.empName;
     if (dto.mobileNumber !== undefined) employee.mobileNumber = dto.mobileNumber;
     if (dto.dateOfBirth !== undefined) employee.dateOfBirth = dto.dateOfBirth;
+    if (dto.bloodGroup !== undefined) employee.bloodGroup = dto.bloodGroup || null;
+    if (dto.maritalStatus !== undefined) employee.maritalStatus = dto.maritalStatus || null;
     return this.employeeRepo.save(employee);
   }
 

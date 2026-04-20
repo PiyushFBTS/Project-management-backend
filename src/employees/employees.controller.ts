@@ -147,7 +147,7 @@ export class EmployeeColleaguesController {
   }
 
   @Post(':id/praises')
-  @ApiOperation({ summary: 'Give praise (HR only)' })
+  @ApiOperation({ summary: 'Give praise to a colleague' })
   giveEmpPraise(
     @TenantId() companyId: number,
     @Param('id', ParseIntPipe) id: number,
@@ -155,7 +155,10 @@ export class EmployeeColleaguesController {
     @CurrentUser('empName') empName: string,
     @Body() body: { praiseType: string; description?: string },
   ) {
-    return this.employeesService.givePraise(id, companyId, empId, 'employee', empName ?? 'HR', body.praiseType, body.description);
+    if (id === empId) {
+      throw new ForbiddenException('You cannot praise yourself');
+    }
+    return this.employeesService.givePraise(id, companyId, empId, 'employee', empName ?? 'Employee', body.praiseType, body.description);
   }
 
   // ── PIP (employee view) ──

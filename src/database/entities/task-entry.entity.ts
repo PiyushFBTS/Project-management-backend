@@ -17,6 +17,7 @@ export enum TaskStatus {
   IN_PROGRESS = 'in_progress',
   FINISHED = 'finished',
   FAILED = 'failed',
+  AWAITING_RESPONSE = 'awaiting_response',
 }
 
 @Entity('task_entries')
@@ -55,6 +56,14 @@ export class TaskEntry {
   })
   @JoinColumn({ name: 'task_type_id' })
   taskType: TaskType;
+
+  // Optional reference to a project ticket this entry belongs to
+  @Column({ name: 'ticket_id', type: 'int', nullable: true })
+  ticketId: number | null;
+
+  // Freeform activity classifier when no ticket: internal_meeting, client_meeting, others, etc.
+  @Column({ name: 'activity_type', type: 'varchar', length: 30, nullable: true })
+  activityType: string | null;
 
   @Column({ name: 'from_time', type: 'time' })
   fromTime: string;

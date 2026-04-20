@@ -19,4 +19,16 @@ export class UpdateEmployeeSelfDto {
   @IsString()
   @Matches(/^\d{4}-\d{2}-\d{2}$/, { message: 'dateOfBirth must be YYYY-MM-DD' })
   dateOfBirth?: string;
+
+  @ApiPropertyOptional({ example: 'O+' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  bloodGroup?: string;
+
+  @ApiPropertyOptional({ example: 'married' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  maritalStatus?: string;
 }
