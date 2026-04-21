@@ -1,5 +1,5 @@
 import {
-  IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional,
+  IsBoolean, IsEmail, IsEnum, IsInt, IsNotEmpty, IsOptional,
   IsString, MaxLength, MinLength, IsPositive, ValidateIf,
 } from 'class-validator';
 import { Type } from 'class-transformer';
@@ -99,4 +99,9 @@ export class CreateEmployeeDto {
   @IsString()
   @IsOptional()
   maritalStatus?: string;
+
+  @ApiPropertyOptional({ description: 'Whether the employee account is active (can log in)' })
+  @IsBoolean()
+  @IsOptional()
+  isActive?: boolean;
 }

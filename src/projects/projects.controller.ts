@@ -58,6 +58,14 @@ export class ProjectsController {
     return this.projectsService.findAll(companyId, filter);
   }
 
+  @Get('all-active')
+  @ApiOperation({ summary: 'List all active projects (flat — for task sheet / dropdown use)' })
+  async findAllActive(@TenantId() companyId: number) {
+    const res = await this.projectsService.findAll(companyId, { status: 'active', limit: 500 } as any);
+    // Return a flat array so it matches the employee-side shape
+    return (res as any)?.data ?? res;
+  }
+
   // ── Project Types ──
   @Get('types/list')
   @ApiOperation({ summary: 'List all project types for this company' })

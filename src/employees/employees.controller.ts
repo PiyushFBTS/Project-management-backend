@@ -28,7 +28,13 @@ export class EmployeeColleaguesController {
 
   @Get()
   @ApiOperation({ summary: 'List colleagues in the same company (read-only)' })
-  findAll(@TenantId() companyId: number, @Query() filter: FilterEmployeeDto) {
+  findAll(
+    @TenantId() companyId: number,
+    @CurrentUser('isHr') isHr: boolean,
+    @Query() filter: FilterEmployeeDto,
+  ) {
+    // Regular employees may only see active colleagues. HR can choose.
+    if (!isHr) filter.isActive = 'true';
     return this.employeesService.findAll(companyId, filter);
   }
 

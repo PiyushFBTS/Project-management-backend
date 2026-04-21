@@ -132,7 +132,7 @@ export class AuthService {
 
   async loginEmployee(dto: EmployeeLoginDto) {
     const employee = await this.employeeRepo.findOne({
-      where: { email: dto.email, isActive: true },
+      where: { email: dto.email },
       select: [
         'id', 'empCode', 'empName', 'email',
         'consultantType', 'assignedProjectId', 'isActive', 'passwordHash',
@@ -143,6 +143,14 @@ export class AuthService {
 
     const valid = await bcrypt.compare(dto.password, employee.passwordHash);
     if (!valid) throw new UnauthorizedException('Invalid credentials');
+
+    // Deactivated accounts: tell the user to contact their admin rather
+    // than confusing them with "invalid credentials".
+    if (!employee.isActive) {
+      throw new ForbiddenException(
+        'Your account is inactive. Please contact your admin to log in.',
+      );
+    }
 
     // Employees always belong to a company — validate license
     await this.validateCompanyLicense(employee.companyId);

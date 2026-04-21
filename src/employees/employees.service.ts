@@ -155,25 +155,32 @@ export class EmployeesService {
     });
   }
 
-  /// Resolve admin email to bridged employee ID, auto-creating minimal record if missing
+  /// Resolve admin email to bridged employee ID, auto-creating minimal record if missing.
+  /// Keeps the bridged row's display name in sync with the admin_users table so
+  /// reports show the admin's real name instead of the email prefix.
   async resolveAdminEmpForGoals(adminEmail: string, companyId: number): Promise<number> {
     if (!companyId) {
       throw new ConflictException('No company context');
     }
+    const adminRow = await this.adminRepo.findOne({
+      where: { email: adminEmail },
+      select: ['id', 'name'],
+    });
+    const adminName = adminRow?.name ?? null;
+
     let emp = await this.employeeRepo.findOne({
       where: { email: adminEmail, companyId },
     });
     if (emp) {
-      if (!emp.isActive) {
-        emp.isActive = true;
-        await this.employeeRepo.save(emp);
-      }
+      let dirty = false;
+      if (!emp.isActive) { emp.isActive = true; dirty = true; }
+      if (adminName && emp.empName !== adminName) { emp.empName = adminName; dirty = true; }
+      if (dirty) await this.employeeRepo.save(emp);
       return emp.id;
     }
-    const namePart = adminEmail.split('@')[0];
     emp = this.employeeRepo.create({
       empCode: `ADM-${Date.now()}`,
-      empName: namePart,
+      empName: adminName || adminEmail.split('@')[0],
       email: adminEmail,
       passwordHash: 'ADMIN_NO_LOGIN',
       consultantType: ConsultantType.MANAGEMENT,
@@ -186,7 +193,11 @@ export class EmployeesService {
   }
 
   async findAll(companyId: number, filter: FilterEmployeeDto) {
-    const { page = 1, limit = 20, sort = 'empName', order = 'asc', search, consultantType, assignedProjectId, isActive } = filter;
+    const { page = 1, limit = 20, sort = 'empName', order = 'asc', search, consultantType, assignedProjectId } = filter;
+    // isActive arrives as 'true' | 'false' | undefined — coerce without
+    // tripping class-transformer's implicit boolean coercion.
+    const isActive: boolean | undefined =
+      filter.isActive === 'true' ? true : filter.isActive === 'false' ? false : undefined;
 
     const qb = this.employeeRepo
       .createQueryBuilder('e')
@@ -206,9 +217,11 @@ export class EmployeesService {
 
     const [data, total] = await qb.getManyAndCount();
 
-    // Include company admins on the first page (so they appear in lists)
+    // Include company admins on the first page (so they appear in lists).
+    // Admins are always active — skip the merge entirely when the caller
+    // explicitly asked for inactive records.
     let admins: any[] = [];
-    if (page === 1) {
+    if (page === 1 && isActive !== false) {
       const adminWhere: any = { companyId, isActive: true };
       const adminResults = await this.adminRepo.find({
         where: adminWhere,
@@ -307,13 +320,16 @@ export class EmployeesService {
 
     Object.assign(employee, dto);
 
-    // Enforce: can only report to employee OR admin, not both
+    // Enforce: can only report to employee OR admin, not both.
+    // Clear BOTH loaded relation objects regardless — TypeORM otherwise
+    // prefers the stale relation's id over the FK column we just set,
+    // which silently discards reports-to changes.
+    employee.reportsTo = null;
+    employee.reportsToAdmin = null;
     if (employee.isReportToAdmin) {
       employee.reportsToId = null;
-      employee.reportsTo = null;
     } else {
       employee.reportsToAdminId = null;
-      employee.reportsToAdmin = null;
     }
 
     return this.employeeRepo.save(employee);

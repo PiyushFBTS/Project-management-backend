@@ -37,25 +37,35 @@ export class DailyTaskSheetsService {
     if (!companyId) {
       throw new BadRequestException('No company context. Super admins cannot fill task sheets; select a company first.');
     }
+
+    // Look up the admin's real display name so the bridged employee row shows
+    // "Rahul Sharma" in reports instead of the email prefix.
+    const adminName = await this.lookupAdminName(email, companyId);
+
     // Try active employee with same email in the same company
     let emp = await this.employeeRepo.findOne({
       where: { email, companyId, isActive: true },
     });
-    if (emp) return emp.id;
-    // Try any employee (including inactive) with the matching email; reactivate
-    emp = await this.employeeRepo.findOne({ where: { email, companyId } });
     if (emp) {
-      if (!emp.isActive) {
-        emp.isActive = true;
+      // Keep the display name in sync with the admin record
+      if (adminName && emp.empName !== adminName) {
+        emp.empName = adminName;
         await this.employeeRepo.save(emp);
       }
       return emp.id;
     }
+    // Try any employee (including inactive) with the matching email; reactivate
+    emp = await this.employeeRepo.findOne({ where: { email, companyId } });
+    if (emp) {
+      if (!emp.isActive) emp.isActive = true;
+      if (adminName && emp.empName !== adminName) emp.empName = adminName;
+      await this.employeeRepo.save(emp);
+      return emp.id;
+    }
     // Auto-create a minimal employee record for the admin
-    const namePart = email.split('@')[0];
     emp = this.employeeRepo.create({
       empCode: `ADM-${Date.now()}`,
-      empName: namePart,
+      empName: adminName || email.split('@')[0],
       email,
       passwordHash: 'ADMIN_NO_LOGIN',
       consultantType: ConsultantType.MANAGEMENT,
@@ -65,6 +75,14 @@ export class DailyTaskSheetsService {
     });
     const saved = await this.employeeRepo.save(emp);
     return saved.id;
+  }
+
+  private async lookupAdminName(email: string, companyId: number): Promise<string | null> {
+    const row = await this.dataSource.query(
+      'SELECT name FROM admin_users WHERE email = ? AND (company_id = ? OR company_id IS NULL) LIMIT 1',
+      [email, companyId],
+    );
+    return row?.[0]?.name ?? null;
   }
 
   async adminMyToday(email: string, companyId: number) {
@@ -281,19 +299,30 @@ export class DailyTaskSheetsService {
 
   // ── Helpers ─────────────────────────────────────────────────────────────────
 
-  /** Allow edits on sheets from today and the previous 2 days; block older sheets. */
+  /**
+   * Edit window defaults:
+   *   - Regular employees: 3 days (today + 2 previous)
+   *   - HR and admin-bridged records: 30 days
+   * A per-employee `fill_days_override` overrides the default when set.
+   */
   private async assertEditable(sheet: DailyTaskSheet, employeeId?: number) {
     const sheetDate = new Date(sheet.sheetDate);
-    let maxDays = 3; // default: today + 2 previous days
+    let maxDays = 3; // default for regular employees
 
-    // Check if employee has a special fill_days_override
     if (employeeId) {
       const row = await this.dataSource.query(
-        'SELECT fill_days_override FROM employees WHERE id = ? LIMIT 1',
+        'SELECT fill_days_override, is_hr, consultant_type FROM employees WHERE id = ? LIMIT 1',
         [employeeId],
       );
-      if (row?.[0]?.fill_days_override != null) {
-        maxDays = Number(row[0].fill_days_override);
+      const rec = row?.[0];
+      if (rec) {
+        const isHr = rec.is_hr == 1 || rec.is_hr === true;
+        const isAdminBridge = rec.consultant_type === 'management';
+        if (isHr || isAdminBridge) maxDays = 30;
+        // Per-employee override wins if explicitly set
+        if (rec.fill_days_override != null) {
+          maxDays = Number(rec.fill_days_override);
+        }
       }
     }
 

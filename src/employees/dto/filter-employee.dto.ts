@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsInt, IsOptional, IsPositive, IsString } from 'class-validator';
+import { IsEnum, IsInt, IsOptional, IsPositive, IsString } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
 import { PaginationDto } from '../../common/dto/pagination.dto';
@@ -22,9 +22,12 @@ export class FilterEmployeeDto extends PaginationDto {
   @IsOptional()
   assignedProjectId?: number;
 
-  @ApiPropertyOptional()
-  @Transform(({ value }) => value === 'true' || value === true)
-  @IsBoolean()
+  // Kept as string to sidestep enableImplicitConversion:true, which would
+  // turn the 'false' query string into true via Boolean('false'). The
+  // service parses this value explicitly.
+  @ApiPropertyOptional({ enum: ['true', 'false'] })
+  @Transform(({ value }) => (value === undefined || value === null || value === '' ? undefined : String(value)))
+  @IsString()
   @IsOptional()
-  isActive?: boolean;
+  isActive?: string;
 }
