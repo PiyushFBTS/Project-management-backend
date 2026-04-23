@@ -100,18 +100,26 @@ export class EmployeeColleaguesController {
   // ── Employee Documents (HR can manage) ──
 
   @Get('documents/:userType/:userId')
-  @ApiOperation({ summary: 'List employee/admin documents (HR)' })
+  @ApiOperation({ summary: 'List employee/admin documents (HR) or own documents' })
   getDocsEmp(
     @TenantId() companyId: number,
     @Param('userType') userType: string,
     @Param('userId', ParseIntPipe) userId: number,
+    @CurrentUser('id') currentUserId: number,
+    @CurrentUser('isHr') isHr: boolean,
   ) {
+    // HR sees any; regular employees only see their own.
+    if (!isHr && !(userType === 'employee' && userId === currentUserId)) {
+      throw new ForbiddenException(
+        'You can only view your own documents. Contact HR to see others.',
+      );
+    }
     return this.employeesService.getDocuments(userType, userId, companyId);
   }
 
   @Post('documents/:userType/:userId')
   @ApiConsumes('multipart/form-data')
-  @ApiOperation({ summary: 'Upload employee/admin document (HR)' })
+  @ApiOperation({ summary: 'Upload employee/admin document (HR) or self-upload' })
   @UseInterceptors(
     FileInterceptor('file', {
       storage: diskStorage({
@@ -129,19 +137,42 @@ export class EmployeeColleaguesController {
     @TenantId() companyId: number,
     @Param('userType') userType: string,
     @Param('userId', ParseIntPipe) userId: number,
+    @CurrentUser('id') currentUserId: number,
+    @CurrentUser('isHr') isHr: boolean,
     @CurrentUser('empName') empName: string,
     @UploadedFile() file: Express.Multer.File,
     @Body('category') category: string,
   ) {
-    return this.employeesService.uploadDocument(userType, userId, companyId, file, empName ?? 'HR', category);
+    // HR can upload for anyone; a regular employee may only upload for themselves.
+    if (!isHr && !(userType === 'employee' && userId === currentUserId)) {
+      throw new ForbiddenException(
+        'You can only upload documents for yourself. Contact HR to manage others.',
+      );
+    }
+    return this.employeesService.uploadDocument(
+      userType, userId, companyId, file,
+      empName ?? (isHr ? 'HR' : 'Employee'),
+      category,
+    );
   }
 
   @Delete('documents/:docId')
-  @ApiOperation({ summary: 'Delete employee/admin document (HR)' })
-  deleteDocEmp(
+  @ApiOperation({ summary: 'Delete employee/admin document (HR) or own document' })
+  async deleteDocEmp(
     @TenantId() companyId: number,
     @Param('docId', ParseIntPipe) docId: number,
+    @CurrentUser('id') currentUserId: number,
+    @CurrentUser('isHr') isHr: boolean,
   ) {
+    // HR: unrestricted. Non-HR: only documents belonging to them.
+    if (!isHr) {
+      const doc = await this.employeesService.findDocument(docId, companyId);
+      if (doc.userType !== 'employee' || doc.userId !== currentUserId) {
+        throw new ForbiddenException(
+          'You can only delete your own documents. Contact HR to remove others.',
+        );
+      }
+    }
     return this.employeesService.deleteDocument(docId, companyId);
   }
 

@@ -279,9 +279,11 @@ export class EmployeeProjectsController {
     @TenantId() companyId: number,
     @CurrentUser('id') employeeId: number,
     @CurrentUser('isHr') isHr: boolean,
+    @Query() filter: FilterProjectDto,
   ) {
     if (isHr) {
-      return this.projectsService.findAll(companyId, { limit: 500 } as any);
+      // HR can toggle the Active / Inactive / All filter; respect whatever they send.
+      return this.projectsService.findAll(companyId, { limit: 500, ...filter } as any);
     }
     return this.projectsService.findByEmployeeTickets(companyId, employeeId);
   }

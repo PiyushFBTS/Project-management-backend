@@ -27,6 +27,14 @@ export class LeaveType {
   @Column({ name: 'is_active', default: true })
   isActive: boolean;
 
+  /**
+   * Annual allowance in days for this leave type. Employees can apply for
+   * leave against this quota; the leave-balance screen deducts approved
+   * requests. Zero means "uncapped / as per policy" — no enforcement.
+   */
+  @Column({ name: 'default_days', type: 'int', default: 0 })
+  defaultDays: number;
+
   @Index('idx_leave_reason_company')
   @Column({ name: 'company_id' })
   companyId: number;

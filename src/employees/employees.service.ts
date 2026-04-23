@@ -6,7 +6,7 @@ import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { Employee, ConsultantType } from '../database/entities/employee.entity';
 import { Company } from '../database/entities/company.entity';
-import { AdminUser } from '../database/entities/admin-user.entity';
+import { AdminUser, AdminRole } from '../database/entities/admin-user.entity';
 import { EmployeeDocument, EmployeeDocCategory } from '../database/entities/employee-document.entity';
 import { EmployeePraise } from '../database/entities/employee-praise.entity';
 import { EmployeePip } from '../database/entities/employee-pip.entity';
@@ -222,14 +222,16 @@ export class EmployeesService {
     // explicitly asked for inactive records.
     let admins: any[] = [];
     if (page === 1 && isActive !== false) {
-      const adminWhere: any = { companyId, isActive: true };
+      // Super admins belong to the platform, not the company — don't surface
+      // them in the company's Employees list (they're not colleagues/HR).
+      const adminWhere: any = { companyId, isActive: true, role: AdminRole.ADMIN };
       const adminResults = await this.adminRepo.find({
         where: adminWhere,
         select: ['id', 'name', 'email', 'role', 'isActive', 'companyId', 'createdAt'],
       });
       admins = adminResults.map((a) => ({
         id: a.id,
-        empCode: a.role === 'super_admin' ? 'SUPER-ADMIN' : 'ADMIN',
+        empCode: 'ADMIN',
         empName: a.name,
         email: a.email,
         isActive: a.isActive,
@@ -264,10 +266,12 @@ export class EmployeesService {
       email: admin.email,
       mobileNumber: (admin as any).mobileNumber ?? null,
       consultantType: 'admin',
-      isActive: true,
+      role: admin.role,
+      isActive: admin.isActive,
+      companyId: admin.companyId,
       isHr: false,
-      dateOfBirth: null,
-      joiningDate: null,
+      dateOfBirth: (admin as any).dateOfBirth ?? null,
+      joiningDate: (admin as any).joiningDate ?? null,
       createdAt: admin.createdAt,
       _type: 'admin',
     };
@@ -491,8 +495,10 @@ export class EmployeesService {
       where: { companyId, isActive: true },
       select: ['id', 'empName', 'dateOfBirth', 'joiningDate'],
     });
+    // Super admins aren't members of any company — keep them out of the
+    // company's birthday / anniversary feed.
     const admins = await this.adminRepo.find({
-      where: { companyId, isActive: true },
+      where: { companyId, isActive: true, role: AdminRole.ADMIN },
       select: ['id', 'name', 'dateOfBirth', 'joiningDate'],
     });
 
@@ -578,7 +584,7 @@ export class EmployeesService {
     }
 
     const admins = await this.adminRepo.find({
-      where: { companyId, isActive: true },
+      where: { companyId, isActive: true, role: AdminRole.ADMIN },
       select: ['id', 'name', 'email', 'dateOfBirth', 'joiningDate'],
     });
     for (const admin of admins) {
@@ -651,6 +657,12 @@ export class EmployeesService {
       uploadedByName,
     });
     return this.empDocRepo.save(doc);
+  }
+
+  async findDocument(docId: number, companyId: number) {
+    const doc = await this.empDocRepo.findOne({ where: { id: docId, companyId } });
+    if (!doc) throw new NotFoundException('Document not found');
+    return doc;
   }
 
   async deleteDocument(docId: number, companyId: number) {

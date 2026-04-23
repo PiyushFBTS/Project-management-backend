@@ -23,6 +23,7 @@ import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import { UpdateLicenseDto } from './dto/update-license.dto';
 import { CreateCompanyAdminDto } from './dto/create-company-admin.dto';
+import { UpdateCompanyAdminDto } from './dto/update-company-admin.dto';
 import { FilterCompanyDto } from './dto/filter-company.dto';
 import { JwtAdminGuard } from '../auth/guards/jwt-admin.guard';
 import { SuperAdminGuard } from '../common/guards/super-admin.guard';
@@ -114,6 +115,16 @@ export class CompaniesController {
   @ApiOperation({ summary: 'List admins of a company' })
   getAdmins(@Param('id', ParseIntPipe) id: number) {
     return this.companiesService.getAdmins(id);
+  }
+
+  @Patch('companies/:id/admins/:adminId')
+  @ApiOperation({ summary: "Update a company's admin (super admin only)" })
+  updateAdmin(
+    @Param('id', ParseIntPipe) id: number,
+    @Param('adminId', ParseIntPipe) adminId: number,
+    @Body() dto: UpdateCompanyAdminDto,
+  ) {
+    return this.companiesService.updateAdmin(id, adminId, dto);
   }
 
   // ── License management ────────────────────────────────────────────────────

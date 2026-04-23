@@ -13,6 +13,7 @@ import { CreateCompanyDto } from './dto/create-company.dto';
 import { UpdateCompanyDto } from './dto/update-company.dto';
 import { UpdateLicenseDto } from './dto/update-license.dto';
 import { CreateCompanyAdminDto } from './dto/create-company-admin.dto';
+import { UpdateCompanyAdminDto } from './dto/update-company-admin.dto';
 import { FilterCompanyDto } from './dto/filter-company.dto';
 
 @Injectable()
@@ -149,6 +150,47 @@ export class CompaniesService {
       select: ['id', 'name', 'email', 'role', 'isActive', 'createdAt'],
       order: { createdAt: 'DESC' },
     });
+  }
+
+  async updateAdmin(
+    companyId: number,
+    adminId: number,
+    dto: UpdateCompanyAdminDto,
+  ): Promise<AdminUser> {
+    await this.findOne(companyId);
+    const admin = await this.adminRepo.findOne({
+      where: { id: adminId, companyId },
+    });
+    if (!admin) throw new NotFoundException(`Admin #${adminId} not found in this company`);
+    // Don't let a super-admin edit another super-admin through the per-company
+    // endpoint — their row belongs to the platform, not the company.
+    if (admin.role === AdminRole.SUPER_ADMIN) {
+      throw new ConflictException('Super admin accounts cannot be edited from a company scope');
+    }
+
+    if (dto.email && dto.email !== admin.email) {
+      const emailExists = await this.adminRepo.findOne({ where: { email: dto.email } });
+      if (emailExists) throw new ConflictException(`Email '${dto.email}' already registered`);
+    }
+
+    // Build an explicit update payload and use repo.update() rather than
+    // repo.save(). save() on an entity loaded without the `select: false`
+    // password_hash column has been observed to silently skip field writes
+    // in some TypeORM versions; update() issues a direct UPDATE and always
+    // flushes every column we pass.
+    const patch: Partial<AdminUser> = {};
+    if (dto.name !== undefined) patch.name = dto.name;
+    if (dto.email !== undefined) patch.email = dto.email;
+    if (dto.isActive !== undefined) patch.isActive = dto.isActive;
+    if (dto.password) patch.passwordHash = await bcrypt.hash(dto.password, 12);
+
+    if (Object.keys(patch).length > 0) {
+      await this.adminRepo.update({ id: adminId, companyId }, patch);
+    }
+
+    const updated = await this.adminRepo.findOne({ where: { id: adminId, companyId } });
+    const { passwordHash: _ph, ...result } = (updated as any) ?? {};
+    return result;
   }
 
   // ── Super admin overview dashboard ────────────────────────────────────────
