@@ -32,6 +32,51 @@ export class AuthService {
     private readonly configService: ConfigService,
   ) {}
 
+  // ── Shared helpers ─────────────────────────────────────────────────────────
+
+  /**
+   * Look up where an email lives across the three login tables. Returns the
+   * role names that have a matching row (order-independent). Used to craft
+   * "you picked the wrong tab" style error messages instead of a generic
+   * "invalid credentials".
+   */
+  private async findEmailRoles(email: string): Promise<Array<'admin' | 'employee' | 'client'>> {
+    const [admin, employee, client] = await Promise.all([
+      this.adminRepo.findOne({ where: { email }, select: ['id'] }),
+      this.employeeRepo.findOne({ where: { email }, select: ['id'] }),
+      this.clientRepo.findOne({ where: { email }, select: ['id'] }),
+    ]);
+    const roles: Array<'admin' | 'employee' | 'client'> = [];
+    if (admin) roles.push('admin');
+    if (employee) roles.push('employee');
+    if (client) roles.push('client');
+    return roles;
+  }
+
+  private roleTabLabel(role: 'admin' | 'employee' | 'client'): string {
+    return role === 'admin' ? 'Admin' : role === 'employee' ? 'Employee' : 'Client';
+  }
+
+  /**
+   * Build an appropriate error when the email wasn't found in the caller's
+   * own table. If it exists under another role we steer the user to the
+   * right tab; otherwise we say the email is unknown.
+   */
+  private async buildMissingAccountError(
+    email: string,
+    attemptedRole: 'admin' | 'employee' | 'client',
+  ): Promise<UnauthorizedException> {
+    const roles = await this.findEmailRoles(email);
+    const otherRoles = roles.filter((r) => r !== attemptedRole);
+    if (otherRoles.length > 0) {
+      const labels = otherRoles.map((r) => this.roleTabLabel(r)).join(' or ');
+      return new UnauthorizedException(
+        `Invalid role selected. This email belongs to a ${labels} account — please switch to the ${labels} tab.`,
+      );
+    }
+    return new UnauthorizedException('Email not found. Please check your email or contact your admin.');
+  }
+
   // ── Admin ──────────────────────────────────────────────────────────────────
 
   async loginAdmin(dto: AdminLoginDto) {
@@ -39,10 +84,10 @@ export class AuthService {
       where: { email: dto.email, isActive: true },
       select: ['id', 'name', 'email', 'role', 'isActive', 'passwordHash', 'companyId'],
     });
-    if (!admin) throw new UnauthorizedException('Invalid credentials');
+    if (!admin) throw await this.buildMissingAccountError(dto.email, 'admin');
 
     const valid = await bcrypt.compare(dto.password, admin.passwordHash);
-    if (!valid) throw new UnauthorizedException('Invalid credentials');
+    if (!valid) throw new UnauthorizedException('Invalid password. Please try again.');
 
     // Company admins require active + non-expired company license
     if (admin.companyId) {
@@ -139,10 +184,10 @@ export class AuthService {
         'companyId', 'isHr',
       ],
     });
-    if (!employee) throw new UnauthorizedException('Invalid credentials');
+    if (!employee) throw await this.buildMissingAccountError(dto.email, 'employee');
 
     const valid = await bcrypt.compare(dto.password, employee.passwordHash);
-    if (!valid) throw new UnauthorizedException('Invalid credentials');
+    if (!valid) throw new UnauthorizedException('Invalid password. Please try again.');
 
     // Deactivated accounts: tell the user to contact their admin rather
     // than confusing them with "invalid credentials".
@@ -339,10 +384,10 @@ export class AuthService {
       select: ['id', 'fullName', 'email', 'passwordHash', 'projectId', 'companyId', 'mobileNumber'],
       relations: ['project'],
     });
-    if (!client) throw new UnauthorizedException('Invalid credentials');
+    if (!client) throw await this.buildMissingAccountError(dto.email, 'client');
 
     const valid = await bcrypt.compare(dto.password, client.passwordHash);
-    if (!valid) throw new UnauthorizedException('Invalid credentials');
+    if (!valid) throw new UnauthorizedException('Invalid password. Please try again.');
 
     // Fetch company info
     const company = await this.companyRepo.findOne({ where: { id: client.companyId } });

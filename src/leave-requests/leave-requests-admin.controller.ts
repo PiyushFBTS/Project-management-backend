@@ -71,9 +71,10 @@ export class LeaveRequestsAdminController {
   approveLeave(
     @Param('id', ParseIntPipe) id: number,
     @TenantId() companyId: number,
+    @CurrentUser('id') adminId: number,
     @Body() dto: ActionLeaveRequestDto,
   ) {
-    return this.service.adminApprove(id, companyId, dto);
+    return this.service.adminApprove(id, companyId, dto, adminId);
   }
 
   @Patch(':id/reject')
@@ -81,9 +82,10 @@ export class LeaveRequestsAdminController {
   rejectLeave(
     @Param('id', ParseIntPipe) id: number,
     @TenantId() companyId: number,
+    @CurrentUser('id') adminId: number,
     @Body() dto: ActionLeaveRequestDto,
   ) {
-    return this.service.adminReject(id, companyId, dto);
+    return this.service.adminReject(id, companyId, dto, adminId);
   }
 
   @Get(':id')

@@ -96,6 +96,14 @@ export class LeaveRequest {
   @Column({ name: 'hr_remarks', type: 'text', nullable: true })
   hrRemarks: string | null;
 
+  /**
+   * Display name of whoever took the final HR-level action. Populated for
+   * both HR-employee approvals (`hrId` also set) and admin approvals (admin
+   * has no row in the employees table, so `hrId` stays null).
+   */
+  @Column({ name: 'hr_approver_name', length: 200, nullable: true })
+  hrApproverName: string | null;
+
   @Index('idx_leave_req_company')
   @Column({ name: 'company_id' })
   companyId: number;

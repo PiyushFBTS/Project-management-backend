@@ -7,6 +7,7 @@ import { LeaveRequest, LeaveRequestStatus } from '../database/entities/leave-req
 import { LeaveRequestWatcher } from '../database/entities/leave-request-watcher.entity';
 import { LeaveType } from '../database/entities/leave-reason.entity';
 import { Employee } from '../database/entities/employee.entity';
+import { AdminUser } from '../database/entities/admin-user.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { NotificationType } from '../database/entities/notification.entity';
 import { CreateLeaveRequestDto } from './dto/create-leave-request.dto';
@@ -38,6 +39,8 @@ export class LeaveRequestsService {
     private readonly leaveTypeRepo: Repository<LeaveType>,
     @InjectRepository(Employee)
     private readonly employeeRepo: Repository<Employee>,
+    @InjectRepository(AdminUser)
+    private readonly adminRepo: Repository<AdminUser>,
     private readonly notificationsService: NotificationsService,
   ) {}
 
@@ -310,6 +313,13 @@ export class LeaveRequestsService {
   async approve(id: number, employee: Employee, dto: ActionLeaveRequestDto) {
     const lr = await this.findOneInternal(id, employee.companyId);
 
+    // Self-approval guard: an employee (including an HR employee) cannot
+    // approve a leave request they themselves submitted. Otherwise an HR
+    // could rubber-stamp their own PTO.
+    if (lr.employeeId != null && lr.employeeId === employee.id) {
+      throw new ForbiddenException('You cannot approve your own leave request');
+    }
+
     // ── Level 1: RM approval ──
     if (lr.managerId === employee.id && lr.status === LeaveRequestStatus.PENDING) {
       lr.status = LeaveRequestStatus.MANAGER_APPROVED;
@@ -355,6 +365,7 @@ export class LeaveRequestsService {
       lr.hrId = employee.id;
       lr.hrActionAt = new Date();
       lr.hrRemarks = dto.remarks ?? null;
+      lr.hrApproverName = employee.empName;
       await this.leaveRequestRepo.save(lr);
 
       const approvedEmp = lr.employeeId
@@ -393,6 +404,10 @@ export class LeaveRequestsService {
   async reject(id: number, employee: Employee, dto: ActionLeaveRequestDto) {
     const lr = await this.findOneInternal(id, employee.companyId);
 
+    if (lr.employeeId != null && lr.employeeId === employee.id) {
+      throw new ForbiddenException('You cannot reject your own leave request');
+    }
+
     // ── Level 1: RM rejection ──
     if (lr.managerId === employee.id && lr.status === LeaveRequestStatus.PENDING) {
       lr.status = LeaveRequestStatus.MANAGER_REJECTED;
@@ -419,6 +434,7 @@ export class LeaveRequestsService {
       lr.hrId = employee.id;
       lr.hrActionAt = new Date();
       lr.hrRemarks = dto.remarks ?? null;
+      lr.hrApproverName = employee.empName;
       await this.leaveRequestRepo.save(lr);
 
       const rejectedEmp = lr.employeeId
@@ -468,21 +484,35 @@ export class LeaveRequestsService {
 
   // ── Admin: approve a leave request ────────────────────────────────────────
 
-  async adminApprove(id: number, companyId: number, dto: ActionLeaveRequestDto) {
+  async adminApprove(
+    id: number,
+    companyId: number,
+    dto: ActionLeaveRequestDto,
+    adminId?: number,
+  ) {
     const lr = await this.findOneInternal(id, companyId);
 
-    if (lr.status === LeaveRequestStatus.PENDING) {
-      lr.status = LeaveRequestStatus.MANAGER_APPROVED;
-      lr.managerActionAt = new Date();
-      lr.managerRemarks = dto.remarks ?? null;
-      await this.leaveRequestRepo.save(lr);
-      return this.findOneInternal(id, companyId);
+    // Self-approval guard for admin-submitted leaves.
+    if (adminId != null && lr.adminId != null && lr.adminId === adminId) {
+      throw new ForbiddenException('You cannot approve your own leave request');
     }
 
-    if (lr.status === LeaveRequestStatus.MANAGER_APPROVED) {
+    // Admin has final authority — bypass the RM step. Both PENDING and
+    // MANAGER_APPROVED go directly to HR_APPROVED.
+    if (
+      lr.status === LeaveRequestStatus.PENDING ||
+      lr.status === LeaveRequestStatus.MANAGER_APPROVED
+    ) {
       lr.status = LeaveRequestStatus.HR_APPROVED;
       lr.hrActionAt = new Date();
       lr.hrRemarks = dto.remarks ?? null;
+      if (adminId != null) {
+        const approver = await this.adminRepo.findOne({
+          where: { id: adminId },
+          select: ['id', 'name'],
+        });
+        lr.hrApproverName = approver?.name ?? null;
+      }
       await this.leaveRequestRepo.save(lr);
       return this.findOneInternal(id, companyId);
     }
@@ -492,21 +522,35 @@ export class LeaveRequestsService {
 
   // ── Admin: reject a leave request ─────────────────────────────────────────
 
-  async adminReject(id: number, companyId: number, dto: ActionLeaveRequestDto) {
+  async adminReject(
+    id: number,
+    companyId: number,
+    dto: ActionLeaveRequestDto,
+    adminId?: number,
+  ) {
     const lr = await this.findOneInternal(id, companyId);
 
-    if (lr.status === LeaveRequestStatus.PENDING) {
-      lr.status = LeaveRequestStatus.MANAGER_REJECTED;
-      lr.managerActionAt = new Date();
-      lr.managerRemarks = dto.remarks ?? null;
-      await this.leaveRequestRepo.save(lr);
-      return this.findOneInternal(id, companyId);
+    if (adminId != null && lr.adminId != null && lr.adminId === adminId) {
+      throw new ForbiddenException('You cannot reject your own leave request');
     }
 
-    if (lr.status === LeaveRequestStatus.MANAGER_APPROVED) {
+    // Admin rejection is allowed at any non-terminal state, including an
+    // already-approved request (admin can reverse a mistaken approval).
+    if (
+      lr.status === LeaveRequestStatus.PENDING ||
+      lr.status === LeaveRequestStatus.MANAGER_APPROVED ||
+      lr.status === LeaveRequestStatus.HR_APPROVED
+    ) {
       lr.status = LeaveRequestStatus.HR_REJECTED;
       lr.hrActionAt = new Date();
       lr.hrRemarks = dto.remarks ?? null;
+      if (adminId != null) {
+        const approver = await this.adminRepo.findOne({
+          where: { id: adminId },
+          select: ['id', 'name'],
+        });
+        lr.hrApproverName = approver?.name ?? null;
+      }
       await this.leaveRequestRepo.save(lr);
       return this.findOneInternal(id, companyId);
     }
@@ -578,9 +622,11 @@ export class LeaveRequestsService {
   // ── Employee: get active leave types (for dropdown) ─────────────────────────
 
   async getActiveLeaveTypes(companyId: number) {
+    // Include defaultDays so the leave-balance screens (Next.js + Flutter)
+    // can render each type's annual quota without a second request.
     return this.leaveTypeRepo.find({
       where: { companyId, isActive: true },
-      select: ['id', 'reasonCode', 'reasonName'],
+      select: ['id', 'reasonCode', 'reasonName', 'defaultDays'],
       order: { reasonName: 'ASC' },
     });
   }

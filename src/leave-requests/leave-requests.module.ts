@@ -7,11 +7,12 @@ import { LeaveRequest } from '../database/entities/leave-request.entity';
 import { LeaveRequestWatcher } from '../database/entities/leave-request-watcher.entity';
 import { LeaveType } from '../database/entities/leave-reason.entity';
 import { Employee } from '../database/entities/employee.entity';
+import { AdminUser } from '../database/entities/admin-user.entity';
 import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([LeaveRequest, LeaveRequestWatcher, LeaveType, Employee]),
+    TypeOrmModule.forFeature([LeaveRequest, LeaveRequestWatcher, LeaveType, Employee, AdminUser]),
     NotificationsModule,
   ],
   providers: [LeaveRequestsService],
