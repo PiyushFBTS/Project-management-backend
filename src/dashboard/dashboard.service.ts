@@ -76,28 +76,47 @@ export class DashboardService {
 
   async getManDaysByType(companyId: number, month?: string) {
     const m = month || new Date().toISOString().slice(0, 7);
+    // Use the sheet-level man_days STORED column (same source the Summary
+    // endpoint uses) so this works even when task_entries are sparse. Group
+    // by consultant_type from the joined employee row.
     return this.dataSource.query(
-      `SELECT consultant_type,
-              SUM(total_man_days) AS total_man_days,
-              COUNT(DISTINCT employee_id) AS employee_count
-       FROM vw_employee_man_days
-       WHERE month = ? AND company_id = ?
+      `SELECT
+         COALESCE(e.consultant_type, 'Unspecified')   AS consultant_type,
+         ROUND(COALESCE(SUM(dts.man_days), 0), 2)     AS total_man_days,
+         COUNT(DISTINCT e.id)                         AS employee_count
+       FROM daily_task_sheets dts
+         JOIN employees e ON e.id = dts.employee_id
+       WHERE dts.company_id = ?
+         AND DATE_FORMAT(dts.sheet_date, '%Y-%m') = ?
+         AND dts.is_submitted = 1
        GROUP BY consultant_type
        ORDER BY total_man_days DESC`,
-      [m, companyId],
+      [companyId, m],
     );
   }
 
   async getManDaysByProject(companyId: number, month?: string) {
     const m = month || new Date().toISOString().slice(0, 7);
+    // Sum per-entry duration_hours / 8. LEFT JOIN to projects so entries
+    // without a project (e.g. "other / unphased work") still appear under
+    // an "Other / Unphased" bucket instead of vanishing.
     return this.dataSource.query(
-      `SELECT project_id, project_code, project_name, project_type,
-              SUM(total_man_days) AS total_man_days, SUM(employee_count) AS employee_count
-       FROM vw_project_man_days
-       WHERE month = ? AND company_id = ?
-       GROUP BY project_id, project_code, project_name, project_type
+      `SELECT
+         p.id                                                  AS project_id,
+         p.project_code                                        AS project_code,
+         COALESCE(p.project_name, 'Other / Unphased')          AS project_name,
+         p.project_type                                        AS project_type,
+         ROUND(SUM(te.duration_hours) / 8, 2)                  AS total_man_days,
+         COUNT(DISTINCT te.task_sheet_id)                      AS employee_count
+       FROM task_entries te
+         JOIN daily_task_sheets dts ON dts.id = te.task_sheet_id
+         LEFT JOIN projects p ON p.id = te.project_id
+       WHERE dts.company_id = ?
+         AND DATE_FORMAT(dts.sheet_date, '%Y-%m') = ?
+         AND dts.is_submitted = 1
+       GROUP BY p.id, p.project_code, project_name, p.project_type
        ORDER BY total_man_days DESC`,
-      [m, companyId],
+      [companyId, m],
     );
   }
 
