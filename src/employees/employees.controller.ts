@@ -361,6 +361,15 @@ export class EmployeesController {
     return this.employeesService.setFillDaysOverride(id, companyId, body.fillDaysOverride);
   }
 
+  // `me/praises` MUST be declared before `:id/praises` — same reason as
+  // the goals routes below: NestJS matches in registration order and
+  // ParseIntPipe on `:id` rejects the literal string "me".
+  @Get('me/praises')
+  @ApiOperation({ summary: "Praises received by the logged-in admin (via bridged employee record)" })
+  getMyAdminPraises(@CurrentUser('email') adminEmail: string, @TenantId() companyId: number) {
+    return this.employeesService.getAdminOwnPraises(adminEmail, companyId);
+  }
+
   @Get(':id/praises')
   @ApiOperation({ summary: 'Get praises for an employee' })
   getPraises(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
@@ -379,59 +388,11 @@ export class EmployeesController {
     return this.employeesService.givePraise(id, companyId, adminId, 'admin', adminName, body.praiseType, body.description);
   }
 
-  @Get('me/praises')
-  @ApiOperation({ summary: "Praises received by the logged-in admin (via bridged employee record)" })
-  getMyAdminPraises(@CurrentUser('email') adminEmail: string, @TenantId() companyId: number) {
-    return this.employeesService.getAdminOwnPraises(adminEmail, companyId);
-  }
-
-  // ── Goals (Admin) ────────────────────────────────────────────────────
-  @Get(':id/goals')
-  @ApiOperation({ summary: 'Get goals for an employee' })
-  getGoals(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
-    return this.employeesService.getGoals(id, companyId);
-  }
-
-  @Post(':id/goals')
-  @ApiOperation({ summary: 'Create a goal for an employee (admin)' })
-  createGoal(
-    @TenantId() companyId: number,
-    @Param('id', ParseIntPipe) id: number,
-    @CurrentUser('id') adminId: number,
-    @CurrentUser('name') adminName: string,
-    @Body() dto: {
-      title: string;
-      description?: string;
-      timeframe: 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
-      progressPercent?: number;
-      targetDate?: string;
-    },
-  ) {
-    return this.employeesService.createGoal(id, companyId, adminId, 'admin', adminName ?? 'Admin', dto);
-  }
-
-  @Patch(':id/goals/:goalId')
-  @ApiOperation({ summary: 'Update a goal (admin)' })
-  updateGoal(
-    @TenantId() companyId: number,
-    @Param('id', ParseIntPipe) id: number,
-    @Param('goalId', ParseIntPipe) goalId: number,
-    @Body() dto: any,
-  ) {
-    return this.employeesService.updateGoal(goalId, id, companyId, dto);
-  }
-
-  @Delete(':id/goals/:goalId')
-  @ApiOperation({ summary: 'Delete a goal (admin)' })
-  deleteGoal(
-    @TenantId() companyId: number,
-    @Param('id', ParseIntPipe) id: number,
-    @Param('goalId', ParseIntPipe) goalId: number,
-  ) {
-    return this.employeesService.deleteGoal(goalId, id, companyId);
-  }
-
   // ── Admin's own goals (bridged via employee record) ──────────────────
+  // IMPORTANT: these `me/*` routes MUST be registered before the
+  // `:id/*` ones below — NestJS matches routes in registration order
+  // and `ParseIntPipe` on `:id` would otherwise reject "me" with
+  // "Validation failed (numeric string is expected)".
   @Get('me/goals')
   @ApiOperation({ summary: "Admin's own goals (via bridged employee record)" })
   getMyAdminGoals(@CurrentUser('email') adminEmail: string, @TenantId() companyId: number) {
@@ -478,6 +439,52 @@ export class EmployeesController {
   ) {
     const empId = await this.employeesService.resolveAdminEmpForGoals(adminEmail, companyId);
     return this.employeesService.deleteGoal(goalId, empId, companyId);
+  }
+
+  // ── Goals (Admin) ────────────────────────────────────────────────────
+  @Get(':id/goals')
+  @ApiOperation({ summary: 'Get goals for an employee' })
+  getGoals(@TenantId() companyId: number, @Param('id', ParseIntPipe) id: number) {
+    return this.employeesService.getGoals(id, companyId);
+  }
+
+  @Post(':id/goals')
+  @ApiOperation({ summary: 'Create a goal for an employee (admin)' })
+  createGoal(
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser('id') adminId: number,
+    @CurrentUser('name') adminName: string,
+    @Body() dto: {
+      title: string;
+      description?: string;
+      timeframe: 'monthly' | 'quarterly' | 'half_yearly' | 'yearly';
+      progressPercent?: number;
+      targetDate?: string;
+    },
+  ) {
+    return this.employeesService.createGoal(id, companyId, adminId, 'admin', adminName ?? 'Admin', dto);
+  }
+
+  @Patch(':id/goals/:goalId')
+  @ApiOperation({ summary: 'Update a goal (admin)' })
+  updateGoal(
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('goalId', ParseIntPipe) goalId: number,
+    @Body() dto: any,
+  ) {
+    return this.employeesService.updateGoal(goalId, id, companyId, dto);
+  }
+
+  @Delete(':id/goals/:goalId')
+  @ApiOperation({ summary: 'Delete a goal (admin)' })
+  deleteGoal(
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Param('goalId', ParseIntPipe) goalId: number,
+  ) {
+    return this.employeesService.deleteGoal(goalId, id, companyId);
   }
 
   @Delete('praises/:praiseId')
