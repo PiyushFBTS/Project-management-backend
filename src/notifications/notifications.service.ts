@@ -19,24 +19,49 @@ export class NotificationsService {
     companyId: number,
     metadata?: Record<string, unknown>,
     targetEmployeeId?: number,
+    originatorAdminId?: number,
   ): Promise<Notification> {
     const notif = this.notifRepo.create({
       type, title, message, companyId,
       metadata: metadata ?? null,
       targetEmployeeId: targetEmployeeId ?? null,
+      originatorAdminId: originatorAdminId ?? null,
     });
     return this.notifRepo.save(notif);
   }
 
   // ── Query ─────────────────────────────────────────────────────────────────────
 
-  async findAll(companyId: number, limit = 30) {
-    const [data, total] = await this.notifRepo.findAndCount({
-      where: { companyId },
-      order: { createdAt: 'DESC' },
-      take: limit,
-    });
-    const unreadCount = await this.notifRepo.count({ where: { isRead: false, companyId } });
+  /**
+   * Admin notification feed. When `excludeOriginatorAdminId` is provided,
+   * notifications that this admin themselves triggered are filtered out so
+   * they don't see alerts about their own actions (e.g. their own task
+   * sheet submission or their own leave request). Peer admins of the same
+   * company still see them.
+   */
+  async findAll(companyId: number, limit = 30, excludeOriginatorAdminId?: number) {
+    const baseQb = () => {
+      const qb = this.notifRepo
+        .createQueryBuilder('n')
+        .where('n.company_id = :companyId', { companyId });
+      if (excludeOriginatorAdminId) {
+        // NULL-safe exclusion: keep rows where the column is NULL or where it
+        // belongs to a different admin. A bare `!=` would drop NULL rows too.
+        qb.andWhere(
+          '(n.originator_admin_id IS NULL OR n.originator_admin_id != :adminId)',
+          { adminId: excludeOriginatorAdminId },
+        );
+      }
+      return qb;
+    };
+
+    const [data, total] = await baseQb()
+      .orderBy('n.created_at', 'DESC')
+      .take(limit)
+      .getManyAndCount();
+    const unreadCount = await baseQb()
+      .andWhere('n.is_read = :isRead', { isRead: false })
+      .getCount();
     return { data, meta: { total, unreadCount } };
   }
 

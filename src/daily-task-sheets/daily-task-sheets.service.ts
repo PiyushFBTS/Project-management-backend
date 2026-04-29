@@ -105,9 +105,9 @@ export class DailyTaskSheetsService {
     return this.updateRemarks(id, empId, dto);
   }
 
-  async adminMySubmit(email: string, companyId: number, id: number) {
+  async adminMySubmit(email: string, companyId: number, id: number, adminId?: number) {
     const empId = await this.resolveAdminEmployeeId(email, companyId);
-    return this.submit(id, empId, companyId);
+    return this.submit(id, empId, companyId, adminId);
   }
 
   async adminMyAddEntry(email: string, companyId: number, id: number, dto: CreateEntryDto) {
@@ -188,7 +188,7 @@ export class DailyTaskSheetsService {
     return this.sheetRepo.save(sheet);
   }
 
-  async submit(id: number, employeeId: number, companyId: number) {
+  async submit(id: number, employeeId: number, companyId: number, originatorAdminId?: number) {
     const sheet = await this.getById(id, employeeId);
     const wasAlreadySubmitted = sheet.isSubmitted;
 
@@ -203,7 +203,10 @@ export class DailyTaskSheetsService {
     updated.submittedAt = new Date();
     await this.sheetRepo.save(updated);
 
-    // Only send notification on first submission, not on edits
+    // Only send notification on first submission, not on edits.
+    // When an admin submits their own bridged sheet, originatorAdminId
+    // is set so peer admins still see the alert but the originator does
+    // not see a notification about their own action.
     if (!wasAlreadySubmitted) {
       const empName = updated.employee?.empName ?? `Employee #${employeeId}`;
       await this.notificationsService.create(
@@ -212,6 +215,8 @@ export class DailyTaskSheetsService {
         `${empName} submitted their task sheet for ${updated.sheetDate} (${Number(updated.totalHours).toFixed(1)}h).`,
         companyId,
         { sheetId: id, employeeId },
+        undefined,
+        originatorAdminId,
       );
     }
 

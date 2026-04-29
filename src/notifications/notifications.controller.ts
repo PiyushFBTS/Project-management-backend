@@ -4,6 +4,7 @@ import {
 import { NotificationsService } from './notifications.service';
 import { JwtAdminGuard } from '../auth/guards/jwt-admin.guard';
 import { TenantId } from '../common/decorators/tenant-id.decorator';
+import { CurrentUser } from '../common/decorators/current-user.decorator';
 
 @UseGuards(JwtAdminGuard)
 @Controller('notifications')
@@ -12,8 +13,16 @@ export class NotificationsController {
 
   /** GET /api/notifications?limit=30 */
   @Get()
-  async findAll(@TenantId() companyId: number, @Query('limit') limit?: string) {
-    return this.notificationsService.findAll(companyId, limit ? parseInt(limit, 10) : 30);
+  async findAll(
+    @TenantId() companyId: number,
+    @CurrentUser('id') adminId: number,
+    @Query('limit') limit?: string,
+  ) {
+    return this.notificationsService.findAll(
+      companyId,
+      limit ? parseInt(limit, 10) : 30,
+      adminId,
+    );
   }
 
   /** PATCH /api/notifications/read-all */

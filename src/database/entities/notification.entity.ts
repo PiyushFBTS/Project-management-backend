@@ -57,6 +57,13 @@ export class Notification {
   @JoinColumn({ name: 'target_employee_id' })
   targetEmployee: Employee | null;
 
+  // Set when an admin's own action triggered this notification, so the
+  // admin notification feed can hide it from that admin while still
+  // showing it to peer admins of the same company.
+  @Index('idx_notification_originator_admin')
+  @Column({ name: 'originator_admin_id', nullable: true })
+  originatorAdminId: number | null;
+
   @Index('idx_notification_company')
   @Column({ name: 'company_id' })
   companyId: number;

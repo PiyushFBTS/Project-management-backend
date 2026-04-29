@@ -42,6 +42,7 @@ export class ExpensesService {
       employeeId: null,
       submitterType: 'admin',
       submitterName: adminName,
+      submitterAdminId: adminId,
       expenseType: dto.expenseType,
       description: dto.description ?? null,
       amount: dto.amount,
@@ -49,8 +50,6 @@ export class ExpensesService {
       attachmentName: file ? file.originalname : null,
       companyId,
     });
-    // Store the admin ID in employeeId field temporarily (null since it's admin)
-    (expense as any).approvedBy = null;
     return this.expenseRepo.save(expense);
   }
 
@@ -158,9 +157,41 @@ export class ExpensesService {
     const expense = await this.expenseRepo.findOne({ where: { id: expenseId, companyId } });
     if (!expense) throw new NotFoundException('Expense not found');
 
+    // Self-approval guard: an admin cannot approve / reject the expense
+    // they themselves submitted. Other admins (and HR) still can.
+    if (expense.submitterAdminId != null && expense.submitterAdminId === adminId) {
+      throw new ForbiddenException('You cannot approve or reject your own expense');
+    }
+
     expense.status = dto.status;
     expense.approvedBy = adminId;
     expense.approvedByName = adminName ?? null;
+    expense.approvedAt = new Date();
+    if (dto.remarks) expense.remarks = dto.remarks;
+    if (dto.approvedAmount !== undefined) expense.approvedAmount = dto.approvedAmount;
+
+    return this.expenseRepo.save(expense);
+  }
+
+  // ── HR: approve/reject expense ────────────────────────────────────────
+  // HR is an Employee with `isHr=true`. The HR endpoint routes here so we
+  // can enforce the symmetric self-approval rule (HR cannot approve their
+  // own submitted expense) without depending on whatever the admin guard
+  // checks. Mirrors the admin path but uses the HR's employee id/name.
+
+  async updateStatusByHr(expenseId: number, companyId: number, hrEmployeeId: number, hrName: string, dto: UpdateExpenseStatusDto) {
+    const expense = await this.expenseRepo.findOne({ where: { id: expenseId, companyId } });
+    if (!expense) throw new NotFoundException('Expense not found');
+
+    if (expense.employeeId != null && expense.employeeId === hrEmployeeId) {
+      throw new ForbiddenException('You cannot approve or reject your own expense');
+    }
+
+    expense.status = dto.status;
+    // approvedBy stores admin ids; for HR we leave it null and rely on
+    // approvedByName + approvedAt to render attribution in the UI.
+    expense.approvedBy = null;
+    expense.approvedByName = hrName;
     expense.approvedAt = new Date();
     if (dto.remarks) expense.remarks = dto.remarks;
     if (dto.approvedAmount !== undefined) expense.approvedAmount = dto.approvedAmount;

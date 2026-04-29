@@ -162,7 +162,7 @@ export class AdminTaskSheetsController {
     @TenantId() companyId: number,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.service.adminMySubmit(admin.email, companyId, id);
+    return this.service.adminMySubmit(admin.email, companyId, id, admin.id);
   }
 
   @Post('my/:id/entries')

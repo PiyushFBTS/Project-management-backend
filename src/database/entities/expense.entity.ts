@@ -33,6 +33,12 @@ export class Expense {
   @Column({ name: 'submitter_name', length: 255, nullable: true })
   submitterName: string | null;
 
+  // Set when an admin submits their own (bridged) expense. Used by the
+  // approval flow to enforce that an admin cannot approve / reject their
+  // own expense — peer admins (and HR) still can.
+  @Column({ name: 'submitter_admin_id', nullable: true })
+  submitterAdminId: number | null;
+
   @Column({ name: 'expense_type', length: 50 })
   expenseType: string;
 

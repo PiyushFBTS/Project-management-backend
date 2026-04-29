@@ -165,6 +165,22 @@ export class LeaveRequestsService {
       await this.watcherRepo.save(watchers);
     }
 
+    // Notify peer admins (the originator admin is filtered out by
+    // `originatorAdminId`, so they do not see an alert about their own
+    // leave). No targetEmployeeId, so it lands in the company-wide admin
+    // feed where peer admins of the same company will see it.
+    const admin = await this.adminRepo.findOne({ where: { id: adminId } });
+    const adminName = admin?.name ?? `Admin #${adminId}`;
+    await this.notificationsService.create(
+      NotificationType.LEAVE_REQUEST_SUBMITTED,
+      'Leave Request Submitted',
+      `${adminName} has submitted a leave request from ${dto.dateFrom} to ${dto.dateTo}.`,
+      companyId,
+      { leaveRequestId: saved.id, adminId },
+      undefined,
+      adminId,
+    );
+
     return this.findOneInternal(saved.id, companyId);
   }
 
