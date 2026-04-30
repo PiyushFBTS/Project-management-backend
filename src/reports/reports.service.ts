@@ -397,18 +397,22 @@ export class ReportsService {
     const endDate = `${year}-${String(month).padStart(2, '0')}-${new Date(year, month, 0).getDate()}`;
 
     const sheets: any[] = await this.dataSource.query(
-      `SELECT employee_id, DATE_FORMAT(sheet_date, '%Y-%m-%d') AS sheet_date, total_hours, is_submitted
+      `SELECT id, employee_id, DATE_FORMAT(sheet_date, '%Y-%m-%d') AS sheet_date, total_hours, is_submitted
        FROM daily_task_sheets
        WHERE company_id = ? AND sheet_date BETWEEN ? AND ?
        ORDER BY sheet_date`,
       [companyId, startDate, endDate],
     );
 
-    // Build a map: empId -> { date -> { hours, submitted } }
-    const sheetMap = new Map<number, Map<string, { hours: number; submitted: boolean }>>();
+    // Build a map: empId -> { date -> { sheetId, hours, submitted } }
+    // sheetId is sent to the client so a date cell can deep-link straight
+    // to the sheet detail page (`/task-sheets/{id}`) instead of needing
+    // an extra by-employee+date lookup round-trip.
+    const sheetMap = new Map<number, Map<string, { sheetId: number; hours: number; submitted: boolean }>>();
     for (const s of sheets) {
       if (!sheetMap.has(s.employee_id)) sheetMap.set(s.employee_id, new Map());
       sheetMap.get(s.employee_id)!.set(s.sheet_date, {
+        sheetId: Number(s.id),
         hours: Number(s.total_hours || 0),
         submitted: !!s.is_submitted,
       });
@@ -423,10 +427,11 @@ export class ReportsService {
 
     const rows = employees.map((emp) => {
       const empSheets = sheetMap.get(emp.id) || new Map();
-      const dailyData: { date: string; hours: number | null; submitted: boolean }[] = days.map((date) => {
+      const dailyData: { date: string; sheetId: number | null; hours: number | null; submitted: boolean }[] = days.map((date) => {
         const entry = empSheets.get(date);
         return {
           date,
+          sheetId: entry ? entry.sheetId : null,
           hours: entry ? entry.hours : null,
           submitted: entry ? entry.submitted : false,
         };
