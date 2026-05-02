@@ -1,4 +1,4 @@
-import { IsString, IsNumber, IsOptional, IsDateString, IsPositive } from 'class-validator';
+import { IsString, IsNumber, IsOptional, IsDateString, IsPositive, IsBoolean } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -48,4 +48,10 @@ export class UpdateExpenseStatusDto {
   @IsString()
   @IsOptional()
   remarks?: string;
+}
+
+export class UpdateExpensePaidDto {
+  @ApiProperty({ description: 'Mark expense as paid (true) or unpaid (false)' })
+  @IsBoolean()
+  paid: boolean;
 }

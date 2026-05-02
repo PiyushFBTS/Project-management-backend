@@ -181,7 +181,7 @@ export class AuthService {
       select: [
         'id', 'empCode', 'empName', 'email',
         'consultantType', 'assignedProjectId', 'isActive', 'passwordHash',
-        'companyId', 'isHr',
+        'companyId', 'isHr', 'isAccounts',
       ],
     });
     if (!employee) throw await this.buildMissingAccountError(dto.email, 'employee');
@@ -226,6 +226,7 @@ export class AuthService {
         assignedProjectId: employee.assignedProjectId,
         companyId: employee.companyId,
         isHr: employee.isHr,
+        isAccounts: employee.isAccounts,
         companyLogoUrl,
         companyName,
       },

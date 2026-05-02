@@ -1,4 +1,4 @@
-import { Controller, ForbiddenException, Get, Query, Res, UseGuards } from '@nestjs/common';
+import { Controller, ForbiddenException, Get, Param, ParseIntPipe, Query, Res, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
 import { EmployeeService } from './employee.service';
@@ -110,6 +110,34 @@ export class EmployeeController {
   ) {
     if (!employee.isHr) throw new ForbiddenException('Only HR employees can access this report');
     return this.employeeService.getAllProjectWiseReport(companyId, month);
+  }
+
+  @Get('reports/employee/:id/breakdown')
+  @ApiOperation({ summary: 'Per-project hour breakdown for one employee — HR drill-down' })
+  @ApiQuery({ name: 'from_date', example: '2026-02-01' })
+  @ApiQuery({ name: 'to_date', example: '2026-02-28' })
+  getEmployeeBreakdownReport(
+    @CurrentUser() employee: Employee,
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Query('from_date') fromDate: string,
+    @Query('to_date') toDate: string,
+  ) {
+    if (!employee.isHr) throw new ForbiddenException('Only HR employees can access this report');
+    return this.reportsService.getEmployeeProjectBreakdown(companyId, id, fromDate, toDate);
+  }
+
+  @Get('reports/project/:id/employees')
+  @ApiOperation({ summary: 'Per-employee breakdown for a project — HR drill-down' })
+  @ApiQuery({ name: 'month', example: '2026-02' })
+  getProjectEmployeesReport(
+    @CurrentUser() employee: Employee,
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Query('month') month: string,
+  ) {
+    if (!employee.isHr) throw new ForbiddenException('Only HR employees can access this report');
+    return this.reportsService.getProjectEmployeeBreakdown(companyId, id, month);
   }
 
   @Get('reports/daily-fill')

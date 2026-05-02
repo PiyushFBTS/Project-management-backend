@@ -69,6 +69,10 @@ export class CreateEmployeeDto {
   @IsOptional()
   isHr?: boolean;
 
+  @ApiPropertyOptional({ description: 'Whether this employee has Accounts permission (can mark expenses paid)' })
+  @IsOptional()
+  isAccounts?: boolean;
+
   @ApiPropertyOptional({ example: '1995-06-15', description: 'Date of birth (YYYY-MM-DD)' })
   @IsString()
   @IsOptional()

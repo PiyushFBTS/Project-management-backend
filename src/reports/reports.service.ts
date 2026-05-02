@@ -60,6 +60,160 @@ export class ReportsService {
     );
   }
 
+  /// Per-project, per-ticket breakdown of one employee's contributions over
+  /// a date range. Powers the "click an employee" drill-down on the
+  /// employee-wise report. Output shape is grouped server-side so the
+  /// client just renders sections — Project A → ticket 1, ticket 2 — no
+  /// pivoting needed in the UI.
+  async getEmployeeProjectBreakdown(
+    companyId: number,
+    employeeId: number,
+    fromDate: string,
+    toDate: string,
+  ) {
+    const empRows = await this.dataSource.query(
+      `SELECT id, emp_code, emp_name, consultant_type
+       FROM employees
+       WHERE id = ? AND company_id = ?`,
+      [employeeId, companyId],
+    );
+    const employee = empRows[0] ?? null;
+
+    // Flat task-entry rows with optional ticket meta (LEFT JOIN —
+    // task_entries.ticket_id is nullable since not every entry is tied to
+    // a project_task). For non-ticketed entries we also pull
+    // task_description / activity_type so meetings / client calls / ad-hoc
+    // work can be labelled with what the employee actually wrote.
+    const rows: any[] = await this.dataSource.query(
+      `SELECT
+         p.id                   AS project_id,
+         p.project_code         AS project_code,
+         p.project_name         AS project_name,
+         p.project_type         AS project_type,
+         pt.id                  AS ticket_id,
+         pt.ticket_number       AS ticket_number,
+         pt.title               AS ticket_title,
+         pt.status              AS ticket_status,
+         te.task_description    AS task_description,
+         te.activity_type       AS activity_type,
+         te.duration_hours      AS hours
+       FROM daily_task_sheets dts
+         JOIN task_entries te       ON te.task_sheet_id = dts.id
+         JOIN projects p            ON p.id = te.project_id
+         LEFT JOIN project_tasks pt ON pt.id = te.ticket_id
+       WHERE dts.employee_id = ?
+         AND dts.company_id  = ?
+         AND dts.is_submitted = TRUE
+         AND dts.sheet_date BETWEEN ? AND ?
+       ORDER BY p.project_name, pt.ticket_number`,
+      [employeeId, companyId, fromDate, toDate],
+    );
+
+    // Group by project, then by ticket. Entries with a NULL ticket_id are
+    // grouped by their task_description (or activity_type fallback) so
+    // each distinct non-ticketed task — meetings, client calls, internal
+    // syncs — becomes its own row instead of being lumped under a single
+    // "Untracked work" bucket.
+    type Ticket = {
+      ticket_id: number | null;
+      ticket_number: string | null;
+      title: string;
+      status: string | null;
+      hours: number;
+    };
+    type Project = {
+      project_id: number;
+      project_code: string;
+      project_name: string;
+      project_type: string | null;
+      total_hours: number;
+      tickets: Map<string, Ticket>;
+    };
+    const projMap = new Map<number, Project>();
+    for (const r of rows) {
+      const pid = Number(r.project_id);
+      if (!projMap.has(pid)) {
+        projMap.set(pid, {
+          project_id: pid,
+          project_code: r.project_code,
+          project_name: r.project_name,
+          project_type: r.project_type,
+          total_hours: 0,
+          tickets: new Map<string, Ticket>(),
+        });
+      }
+      const proj = projMap.get(pid)!;
+      const hrs = Number(r.hours) || 0;
+      proj.total_hours += hrs;
+
+      // Build the bucket key + display title:
+      //  - ticketed entry → group by ticket id; show ticket title/number.
+      //  - non-ticketed   → group by activity_type only; show the activity
+      //                     name (e.g. "Meeting", "Client Call"). The
+      //                     free-text task_description varies per day and
+      //                     would clutter the report, so it's intentionally
+      //                     not displayed.
+      let key: string;
+      let title: string;
+      if (r.ticket_id != null) {
+        key = `t_${r.ticket_id}`;
+        title = (r.ticket_title?.toString() ?? '').trim();
+        if (title.length === 0) title = 'Untitled ticket';
+      } else {
+        const activity = (r.activity_type?.toString() ?? '').trim();
+        const activityKey = activity.toLowerCase();
+        key = activityKey.length > 0 ? `nt_${activityKey}` : 'nt_other';
+        title = activity.length > 0 ? activity : 'Activity';
+      }
+
+      if (!proj.tickets.has(key)) {
+        proj.tickets.set(key, {
+          ticket_id: r.ticket_id != null ? Number(r.ticket_id) : null,
+          ticket_number: r.ticket_number ?? null,
+          title,
+          status: r.ticket_status ?? null,
+          hours: 0,
+        });
+      }
+      proj.tickets.get(key)!.hours += hrs;
+    }
+
+    const round2 = (n: number) => Math.round(n * 100) / 100;
+
+    const projects = [...projMap.values()]
+      .map((p) => ({
+        project_id: p.project_id,
+        project_code: p.project_code,
+        project_name: p.project_name,
+        project_type: p.project_type,
+        total_hours: round2(p.total_hours),
+        total_man_days: round2(p.total_hours / 8),
+        tickets: [...p.tickets.values()]
+          .map((t) => ({
+            ticket_id: t.ticket_id,
+            ticket_number: t.ticket_number,
+            title: t.title,
+            status: t.status,
+            hours: round2(t.hours),
+            man_days: round2(t.hours / 8),
+          }))
+          .sort((a, b) => b.hours - a.hours),
+      }))
+      .sort((a, b) => b.total_hours - a.total_hours);
+
+    const totalHours = projects.reduce((acc, p) => acc + p.total_hours, 0);
+    return {
+      employee,
+      fromDate,
+      toDate,
+      projects,
+      totals: {
+        total_hours: round2(totalHours),
+        total_man_days: round2(totalHours / 8),
+      },
+    };
+  }
+
   // ── Project-wise man-day report ────────────────────────────────────────────
 
   async getProjectWiseReport(companyId: number, month: string) {
@@ -107,6 +261,48 @@ export class ReportsService {
        GROUP BY e.consultant_type`,
       [projectId, companyId, month],
     );
+  }
+
+  // Per-employee breakdown for a project in a given month — used by the
+  // "click a project to see who contributed" drill-down. Rows are grouped
+  // client-side by consultant_type so the UI can render PM / Functional /
+  // Technical / Management / Core sections, each listing the individual
+  // employees and their man-days.
+  async getProjectEmployeeBreakdown(
+    companyId: number,
+    projectId: number,
+    month: string,
+  ) {
+    const projectRows = await this.dataSource.query(
+      `SELECT id AS project_id, project_code, project_name, project_type
+       FROM projects
+       WHERE id = ? AND company_id = ?`,
+      [projectId, companyId],
+    );
+    const project = projectRows[0] ?? null;
+
+    const employees = await this.dataSource.query(
+      `SELECT
+         e.id              AS employee_id,
+         e.emp_code        AS emp_code,
+         e.emp_name        AS emp_name,
+         e.consultant_type AS consultant_type,
+         ROUND(SUM(te.duration_hours) / 8, 2) AS man_days,
+         ROUND(SUM(te.duration_hours), 2)     AS hours
+       FROM projects p
+         JOIN task_entries te       ON te.project_id = p.id
+         JOIN daily_task_sheets dts ON dts.id = te.task_sheet_id
+         JOIN employees e           ON e.id = dts.employee_id
+       WHERE p.id = ?
+         AND p.company_id = ?
+         AND dts.is_submitted = TRUE
+         AND DATE_FORMAT(dts.sheet_date, '%Y-%m') = ?
+       GROUP BY e.id, e.emp_code, e.emp_name, e.consultant_type
+       ORDER BY e.consultant_type ASC, man_days DESC, e.emp_name ASC`,
+      [projectId, companyId, month],
+    );
+
+    return { project, month, employees };
   }
 
   // ── Daily fill compliance report ───────────────────────────────────────────

@@ -72,6 +72,25 @@ export class Expense {
   @Column({ type: 'text', nullable: true })
   remarks: string | null;
 
+  // Payment tracking — only meaningful once `status === 'approved'`. The
+  // service layer rejects toggles on non-approved expenses. `paid_by_*`
+  // capture who flipped the bit; an admin sets paid_by_admin_id, an
+  // accounts-permissioned employee sets paid_by_employee_id.
+  @Column({ type: 'boolean', default: false })
+  paid: boolean;
+
+  @Column({ name: 'paid_at', type: 'timestamp', nullable: true })
+  paidAt: Date | null;
+
+  @Column({ name: 'paid_by_employee_id', nullable: true })
+  paidByEmployeeId: number | null;
+
+  @Column({ name: 'paid_by_admin_id', nullable: true })
+  paidByAdminId: number | null;
+
+  @Column({ name: 'paid_by_name', length: 255, nullable: true })
+  paidByName: string | null;
+
   @Column({ name: 'company_id' })
   companyId: number;
 

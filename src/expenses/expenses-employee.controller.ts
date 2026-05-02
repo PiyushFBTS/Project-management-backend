@@ -4,7 +4,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ExpensesService } from './expenses.service';
-import { CreateExpenseDto, UpdateExpenseStatusDto } from './dto/create-expense.dto';
+import { CreateExpenseDto, UpdateExpenseStatusDto, UpdateExpensePaidDto } from './dto/create-expense.dto';
 import { JwtEmployeeGuard } from '../auth/guards/jwt-employee.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { TenantId } from '../common/decorators/tenant-id.decorator';
@@ -49,13 +49,14 @@ export class ExpensesEmployeeController {
     return this.service.getMyExpenses(employeeId, companyId, parseInt(page || '1', 10), parseInt(limit || '50', 10));
   }
 
-  // ── HR-only endpoints (HR is an Employee with isHr=true) ───────────────
-  // These let HR see + action expenses across the whole company through
-  // the employee JWT, without giving them an admin login. The same routes
-  // accessed by a non-HR employee return 403.
+  // ── HR / Accounts endpoints ────────────────────────────────────────────
+  // HR (`isHr`) handles approve/reject and can also mark-paid. Accounts
+  // (`isAccounts`) handles mark-paid only. Both flags grant read-all
+  // access. The same employee may hold both flags. Non-privileged
+  // employees get 403.
 
   @Get('all')
-  @ApiOperation({ summary: 'HR: list all company expenses' })
+  @ApiOperation({ summary: 'HR/Accounts: list all company expenses' })
   getAllForHr(
     @CurrentUser() emp: any,
     @TenantId() companyId: number,
@@ -67,7 +68,9 @@ export class ExpensesEmployeeController {
     @Query('fromDate') fromDate?: string,
     @Query('toDate') toDate?: string,
   ) {
-    if (!emp?.isHr) throw new ForbiddenException('HR access required');
+    if (!emp?.isHr && !emp?.isAccounts) {
+      throw new ForbiddenException('HR or Accounts access required');
+    }
     return this.service.getAll(
       companyId,
       parseInt(page || '1', 10),
@@ -94,16 +97,29 @@ export class ExpensesEmployeeController {
     return this.service.updateStatusByHr(id, companyId, emp.id, emp.empName, dto);
   }
 
+  @Patch(':id/paid')
+  @ApiOperation({ summary: 'HR or Accounts: mark expense as paid / unpaid' })
+  accountsMarkPaid(
+    @Param('id', ParseIntPipe) id: number,
+    @CurrentUser() emp: any,
+    @TenantId() companyId: number,
+    @Body() dto: UpdateExpensePaidDto,
+  ) {
+    if (!emp?.isAccounts && !emp?.isHr) throw new ForbiddenException('HR or Accounts access required');
+    return this.service.setPaid(id, companyId, { kind: 'employee', id: emp.id, name: emp.empName }, dto);
+  }
+
   @Get(':id')
-  @ApiOperation({ summary: 'Get expense detail (own; HR can view any)' })
+  @ApiOperation({ summary: 'Get expense detail (own; HR/Accounts can view any)' })
   getOne(
     @Param('id', ParseIntPipe) id: number,
     @CurrentUser() emp: any,
     @TenantId() companyId: number,
   ) {
-    // HR can view any expense in the company; regular employees only see
-    // their own (the 3rd arg scopes the lookup to employeeId).
-    return this.service.getOne(id, companyId, emp?.isHr ? undefined : emp.id);
+    // HR / Accounts can view any expense in the company; regular employees
+    // only see their own (the 3rd arg scopes the lookup to employeeId).
+    const privileged = !!emp?.isHr || !!emp?.isAccounts;
+    return this.service.getOne(id, companyId, privileged ? undefined : emp.id);
   }
 
   @Patch(':id')

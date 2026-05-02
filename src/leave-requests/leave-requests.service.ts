@@ -584,6 +584,11 @@ export class LeaveRequestsService {
       .leftJoinAndSelect('lr.leaveReason', 'reason')
       .leftJoin('lr.employee', 'emp')
       .addSelect(['emp.id', 'emp.empName', 'emp.empCode'])
+      // Join admin too — admin-submitted leaves have employeeId=null and
+      // adminId set; without this join the admin's name doesn't make it
+      // back to the client and the list shows blank rows.
+      .leftJoin('lr.admin', 'adm')
+      .addSelect(['adm.id', 'adm.name'])
       .leftJoin('lr.manager', 'mgr')
       .addSelect(['mgr.id', 'mgr.empName', 'mgr.empCode'])
       .leftJoin('lr.hr', 'hr')

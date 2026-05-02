@@ -30,6 +30,19 @@ export class ReportsController {
     return this.reportsService.getEmployeeWiseReport(companyId, fromDate, toDate, consultantType);
   }
 
+  @Get('employee/:id/breakdown')
+  @ApiOperation({ summary: 'Per-project, per-ticket hour breakdown for one employee (drill-down)' })
+  @ApiQuery({ name: 'from_date', example: '2026-02-01' })
+  @ApiQuery({ name: 'to_date', example: '2026-02-28' })
+  getEmployeeBreakdown(
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Query('from_date') fromDate: string,
+    @Query('to_date') toDate: string,
+  ) {
+    return this.reportsService.getEmployeeProjectBreakdown(companyId, id, fromDate, toDate);
+  }
+
   @Get('employee/:id/detail')
   @ApiOperation({ summary: 'Detailed report for a single employee' })
   @ApiQuery({ name: 'from_date', example: '2026-02-01' })
@@ -61,6 +74,17 @@ export class ReportsController {
     @Query('month') month: string,
   ) {
     return this.reportsService.getProjectDetail(companyId, id, month);
+  }
+
+  @Get('project/:id/employees')
+  @ApiOperation({ summary: 'Per-employee man-day breakdown for a project (drill-down)' })
+  @ApiQuery({ name: 'month', example: '2026-02' })
+  getProjectEmployees(
+    @TenantId() companyId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Query('month') month: string,
+  ) {
+    return this.reportsService.getProjectEmployeeBreakdown(companyId, id, month);
   }
 
   // ── Daily fill compliance ──────────────────────────────────────────────────

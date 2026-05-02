@@ -270,6 +270,7 @@ export class EmployeesService {
       isActive: admin.isActive,
       companyId: admin.companyId,
       isHr: false,
+      isAccounts: false,
       dateOfBirth: (admin as any).dateOfBirth ?? null,
       joiningDate: (admin as any).joiningDate ?? null,
       createdAt: admin.createdAt,

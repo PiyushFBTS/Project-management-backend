@@ -2,7 +2,7 @@ import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/commo
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Expense } from '../database/entities/expense.entity';
-import { CreateExpenseDto, UpdateExpenseStatusDto } from './dto/create-expense.dto';
+import { CreateExpenseDto, UpdateExpenseStatusDto, UpdateExpensePaidDto } from './dto/create-expense.dto';
 import * as fs from 'fs';
 import { join } from 'path';
 
@@ -195,6 +195,43 @@ export class ExpensesService {
     expense.approvedAt = new Date();
     if (dto.remarks) expense.remarks = dto.remarks;
     if (dto.approvedAmount !== undefined) expense.approvedAmount = dto.approvedAmount;
+
+    return this.expenseRepo.save(expense);
+  }
+
+  // ── Mark paid / unpaid ───────────────────────────────────────────────
+  // Only meaningful once status === 'approved'. Pending or rejected
+  // expenses cannot be marked paid; the controller layer additionally
+  // restricts who can call this (admin or accounts-permissioned employee).
+  // `actor` describes who is flipping the bit so we can stamp paid_by_*.
+
+  async setPaid(
+    expenseId: number,
+    companyId: number,
+    actor: { kind: 'admin' | 'employee'; id: number; name: string },
+    dto: UpdateExpensePaidDto,
+  ) {
+    const expense = await this.expenseRepo.findOne({ where: { id: expenseId, companyId } });
+    if (!expense) throw new NotFoundException('Expense not found');
+
+    if (expense.status !== 'approved') {
+      throw new ForbiddenException('Only approved expenses can be marked as paid');
+    }
+
+    expense.paid = !!dto.paid;
+    if (dto.paid) {
+      expense.paidAt = new Date();
+      expense.paidByName = actor.name ?? null;
+      expense.paidByAdminId = actor.kind === 'admin' ? actor.id : null;
+      expense.paidByEmployeeId = actor.kind === 'employee' ? actor.id : null;
+    } else {
+      // Clearing the flag wipes attribution so the next "mark paid" stamps
+      // the actor who actually paid it, not whoever paid it last time.
+      expense.paidAt = null;
+      expense.paidByName = null;
+      expense.paidByAdminId = null;
+      expense.paidByEmployeeId = null;
+    }
 
     return this.expenseRepo.save(expense);
   }

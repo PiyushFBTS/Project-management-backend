@@ -81,6 +81,12 @@ export class Employee {
   @Column({ name: 'is_hr', default: false })
   isHr: boolean;
 
+  // Independent of HR. An accounts-permissioned employee can view all
+  // expenses and mark approved ones as paid/unpaid. Same employee may
+  // hold both flags.
+  @Column({ name: 'is_accounts', default: false })
+  isAccounts: boolean;
+
   @Column({ name: 'fill_days_override', type: 'int', nullable: true, default: null })
   fillDaysOverride: number | null;
 

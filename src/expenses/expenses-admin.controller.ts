@@ -4,7 +4,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
 import { ExpensesService } from './expenses.service';
-import { CreateExpenseDto, UpdateExpenseStatusDto } from './dto/create-expense.dto';
+import { CreateExpenseDto, UpdateExpenseStatusDto, UpdateExpensePaidDto } from './dto/create-expense.dto';
 import { JwtAdminGuard } from '../auth/guards/jwt-admin.guard';
 import { CurrentUser } from '../common/decorators/current-user.decorator';
 import { TenantId } from '../common/decorators/tenant-id.decorator';
@@ -84,6 +84,18 @@ export class ExpensesAdminController {
     @Body() dto: UpdateExpenseStatusDto,
   ) {
     return this.service.updateStatus(id, companyId, adminId, dto, adminName);
+  }
+
+  @Patch(':id/paid')
+  @ApiOperation({ summary: 'Mark expense as paid / unpaid (admin)' })
+  markPaid(
+    @Param('id', ParseIntPipe) id: number,
+    @TenantId() companyId: number,
+    @CurrentUser('id') adminId: number,
+    @CurrentUser('name') adminName: string,
+    @Body() dto: UpdateExpensePaidDto,
+  ) {
+    return this.service.setPaid(id, companyId, { kind: 'admin', id: adminId, name: adminName }, dto);
   }
 
   @Delete(':id')
