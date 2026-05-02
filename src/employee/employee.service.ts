@@ -295,6 +295,45 @@ export class EmployeeService {
     );
   }
 
+  /// Project-wise report scoped to a single employee — used by non-HR
+  /// employees so they can see how their own time was split across the
+  /// projects they contributed to in a given month. Same column shape as
+  /// `getAllProjectWiseReport`; the four-of-five consultant-type columns
+  /// will be 0 (only the employee's own type carries hours), and
+  /// `employee_count` is fixed at 1 since there's exactly one contributor
+  /// (the requester).
+  async getSelfProjectWiseReport(
+    employeeId: number,
+    companyId: number,
+    month: string,
+  ) {
+    return this.dataSource.query(
+      `SELECT
+         p.id                                        AS project_id,
+         p.project_code                              AS project_code,
+         p.project_name                              AS project_name,
+         p.project_type                              AS project_type,
+         ROUND(SUM(CASE WHEN e.consultant_type = 'project_manager' THEN te.duration_hours ELSE 0 END) / 8, 2) AS pm_man_days,
+         ROUND(SUM(CASE WHEN e.consultant_type = 'functional'      THEN te.duration_hours ELSE 0 END) / 8, 2) AS functional_man_days,
+         ROUND(SUM(CASE WHEN e.consultant_type = 'technical'       THEN te.duration_hours ELSE 0 END) / 8, 2) AS technical_man_days,
+         ROUND(SUM(CASE WHEN e.consultant_type = 'management'      THEN te.duration_hours ELSE 0 END) / 8, 2) AS management_man_days,
+         ROUND(SUM(CASE WHEN e.consultant_type = 'core_team'       THEN te.duration_hours ELSE 0 END) / 8, 2) AS core_team_man_days,
+         ROUND(SUM(te.duration_hours) / 8, 2)        AS total_man_days,
+         1                                           AS employee_count
+       FROM projects p
+         JOIN task_entries te       ON te.project_id = p.id
+         JOIN daily_task_sheets dts ON dts.id = te.task_sheet_id
+         JOIN employees e           ON e.id = dts.employee_id
+       WHERE p.company_id = ?
+         AND e.id = ?
+         AND dts.is_submitted = TRUE
+         AND DATE_FORMAT(dts.sheet_date, '%Y-%m') = ?
+       GROUP BY p.id, p.project_code, p.project_name, p.project_type
+       ORDER BY total_man_days DESC`,
+      [companyId, employeeId, month],
+    );
+  }
+
   async getAllDailyFillReport(companyId: number, date: string) {
     const rows = await this.dataSource.query(
       `SELECT
@@ -315,6 +354,40 @@ export class EmployeeService {
     const total = rows.length;
     const filled = rows.filter((r: any) => r.is_filled).length;
     return { date, filledCount: filled, totalCount: total, fillRate: total > 0 ? Math.round((filled / total) * 100) : 0, rows };
+  }
+
+  /// Daily-fill report scoped to a single employee. Non-HR employees see
+  /// only their own row — same shape as `getAllDailyFillReport` so the
+  /// existing UI can render either response interchangeably.
+  async getSelfDailyFillReport(
+    employeeId: number,
+    companyId: number,
+    date: string,
+  ) {
+    const rows = await this.dataSource.query(
+      `SELECT
+         e.id, e.emp_code, e.emp_name, e.consultant_type,
+         CASE WHEN dts.id IS NOT NULL THEN 1 ELSE 0 END AS is_filled,
+         COALESCE(dts.total_hours, 0)                   AS total_hours,
+         dts.id                                          AS sheet_id,
+         (SELECT COUNT(*) FROM task_entries te WHERE te.task_sheet_id = dts.id) AS entry_count
+       FROM employees e
+       LEFT JOIN daily_task_sheets dts
+         ON dts.employee_id = e.id
+         AND dts.sheet_date = ?
+         AND dts.is_submitted = 1
+       WHERE e.id = ? AND e.company_id = ?`,
+      [date, employeeId, companyId],
+    );
+    const total = rows.length;
+    const filled = rows.filter((r: any) => r.is_filled).length;
+    return {
+      date,
+      filledCount: filled,
+      totalCount: total,
+      fillRate: total > 0 ? Math.round((filled / total) * 100) : 0,
+      rows,
+    };
   }
 
   async getAllLastFilledReport(companyId: number) {

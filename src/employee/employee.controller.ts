@@ -101,19 +101,22 @@ export class EmployeeController {
   }
 
   @Get('reports/project-wise')
-  @ApiOperation({ summary: 'Project-wise report (HR only)' })
+  @ApiOperation({ summary: 'Project-wise report: self only, or all if HR' })
   @ApiQuery({ name: 'month', example: '2026-02' })
   getProjectWiseReport(
     @CurrentUser() employee: Employee,
     @TenantId() companyId: number,
     @Query('month') month: string,
   ) {
-    if (!employee.isHr) throw new ForbiddenException('Only HR employees can access this report');
-    return this.employeeService.getAllProjectWiseReport(companyId, month);
+    if (employee.isHr) {
+      return this.employeeService.getAllProjectWiseReport(companyId, month);
+    }
+    // Non-HR employees see only their own contributions per project.
+    return this.employeeService.getSelfProjectWiseReport(employee.id, companyId, month);
   }
 
   @Get('reports/employee/:id/breakdown')
-  @ApiOperation({ summary: 'Per-project hour breakdown for one employee — HR drill-down' })
+  @ApiOperation({ summary: 'Per-project hour breakdown for one employee (self or HR)' })
   @ApiQuery({ name: 'from_date', example: '2026-02-01' })
   @ApiQuery({ name: 'to_date', example: '2026-02-28' })
   getEmployeeBreakdownReport(
@@ -123,33 +126,47 @@ export class EmployeeController {
     @Query('from_date') fromDate: string,
     @Query('to_date') toDate: string,
   ) {
-    if (!employee.isHr) throw new ForbiddenException('Only HR employees can access this report');
+    // Allow if HR (any employee) or if requesting own data.
+    if (!employee.isHr && id !== employee.id) {
+      throw new ForbiddenException('You can only view your own breakdown');
+    }
     return this.reportsService.getEmployeeProjectBreakdown(companyId, id, fromDate, toDate);
   }
 
   @Get('reports/project/:id/employees')
-  @ApiOperation({ summary: 'Per-employee breakdown for a project — HR drill-down' })
+  @ApiOperation({ summary: 'Per-employee breakdown for a project (HR sees all, others see self)' })
   @ApiQuery({ name: 'month', example: '2026-02' })
-  getProjectEmployeesReport(
+  async getProjectEmployeesReport(
     @CurrentUser() employee: Employee,
     @TenantId() companyId: number,
     @Param('id', ParseIntPipe) id: number,
     @Query('month') month: string,
   ) {
-    if (!employee.isHr) throw new ForbiddenException('Only HR employees can access this report');
-    return this.reportsService.getProjectEmployeeBreakdown(companyId, id, month);
+    const data = await this.reportsService.getProjectEmployeeBreakdown(companyId, id, month);
+    if (employee.isHr) return data;
+    // Non-HR employees see only their own row in the project drill-down.
+    return {
+      ...data,
+      employees: (data.employees ?? []).filter(
+        (e: { employee_id: number }) => e.employee_id === employee.id,
+      ),
+    };
   }
 
   @Get('reports/daily-fill')
-  @ApiOperation({ summary: 'Daily fill compliance report (HR only)' })
+  @ApiOperation({ summary: 'Daily fill compliance report: self only, or all if HR' })
   @ApiQuery({ name: 'date', example: '2026-02-27' })
   getDailyFillReport(
     @CurrentUser() employee: Employee,
     @TenantId() companyId: number,
     @Query('date') date: string,
   ) {
-    if (!employee.isHr) throw new ForbiddenException('Only HR employees can access this report');
-    return this.employeeService.getAllDailyFillReport(companyId, date);
+    if (employee.isHr) {
+      return this.employeeService.getAllDailyFillReport(companyId, date);
+    }
+    // Non-HR employees see only their own row — useful as a quick "did I
+    // submit today?" check from the dashboard's Reports section.
+    return this.employeeService.getSelfDailyFillReport(employee.id, companyId, date);
   }
 
   @Get('reports/last-filled')

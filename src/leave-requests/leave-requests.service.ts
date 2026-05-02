@@ -189,9 +189,14 @@ export class LeaveRequestsService {
   async findMyLeaves(employeeId: number, companyId: number, filter: FilterLeaveRequestDto) {
     const { page = 1, limit = 20, sort = 'createdAt', order = 'desc', status, dateFrom, dateTo } = filter;
 
+    // Join lr.employee so the applicant's empName surfaces on the list —
+    // without this the Flutter LeaveCard's `applicantName` getter falls
+    // back to '-' and shows blank where the name should be.
     const qb = this.leaveRequestRepo
       .createQueryBuilder('lr')
       .leftJoinAndSelect('lr.leaveReason', 'reason')
+      .leftJoin('lr.employee', 'emp')
+      .addSelect(['emp.id', 'emp.empName', 'emp.empCode'])
       .leftJoin('lr.manager', 'mgr')
       .addSelect(['mgr.id', 'mgr.empName', 'mgr.empCode'])
       .leftJoin('lr.hr', 'hr')
@@ -220,6 +225,10 @@ export class LeaveRequestsService {
       .leftJoinAndSelect('lr.leaveReason', 'reason')
       .leftJoin('lr.employee', 'emp')
       .addSelect(['emp.id', 'emp.empName', 'emp.empCode'])
+      // Admin-submitted leaves carry adminId, not employeeId — pull
+      // admin.name in too so the row label isn't blank for HR.
+      .leftJoin('lr.admin', 'adm')
+      .addSelect(['adm.id', 'adm.name'])
       .leftJoin('lr.manager', 'mgr')
       .addSelect(['mgr.id', 'mgr.empName', 'mgr.empCode'])
       .where('lr.companyId = :companyId', { companyId: employee.companyId })
@@ -252,6 +261,10 @@ export class LeaveRequestsService {
       .leftJoinAndSelect('lr.leaveReason', 'reason')
       .leftJoin('lr.employee', 'emp')
       .addSelect(['emp.id', 'emp.empName', 'emp.empCode'])
+      // Pull admin in so admin-submitted leaves don't render blank in
+      // the HR / RM team list.
+      .leftJoin('lr.admin', 'adm')
+      .addSelect(['adm.id', 'adm.name'])
       .leftJoin('lr.manager', 'mgr')
       .addSelect(['mgr.id', 'mgr.empName', 'mgr.empCode'])
       .leftJoin('lr.hr', 'hr')
